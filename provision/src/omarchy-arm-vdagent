@@ -24,6 +24,48 @@ PROTOCOLO (spice-protocol, spice/vd_agent.h)
 """
 import os, sys, struct, subprocess, threading, time, select, signal
 
+_lang = os.environ.get("OMARCHY_LANG")
+if _lang is None:
+    try:
+        with open("/etc/omarchy-arm-language", encoding="utf-8") as _f:
+            _lang = _f.read().strip()
+    except OSError:
+        _lang = None
+_LANG = "es" if _lang == "es" else "en"
+_MESSAGES = {
+    "missing_port": {
+        "en": "{port} does not exist.",
+        "es": "no existe {port}.",
+    },
+    "clipboard_setup": {
+        "en": "In UTM: VM Settings → Sharing → enable 'Share Clipboard'.",
+        "es": "En UTM: Ajustes de la VM → Compartir → activa 'Compartir portapapeles'.",
+    },
+    "missing_command": {
+        "en": "missing {cmd} (wl-clipboard package)",
+        "es": "falta {cmd} (paquete wl-clipboard)",
+    },
+    "port_closed": {
+        "en": "port closed: {error}",
+        "es": "puerto cerrado: {error}",
+    },
+    "capabilities": {
+        "en": "client capabilities: selection = {value}",
+        "es": "capacidades del cliente: selección = {value}",
+    },
+    "clipboard_received": {
+        "en": "received from host: {size} bytes",
+        "es": "recibido del anfitrión: {size} bytes",
+    },
+    "wl_copy_failed": {
+        "en": "wl-copy failed: {error}",
+        "es": "wl-copy falló: {error}",
+    },
+}
+
+def msg(key, **values):
+    return _MESSAGES[key][_LANG].format(**values)
+
 PUERTO = os.environ.get("VDAGENT_PORT", "/dev/virtio-ports/com.redhat.spice.0")
 
 VD_AGENT_PROTOCOL = 1
@@ -104,7 +146,7 @@ class Agente:
                 _puerto, tam = struct.unpack("<II", self._leer_exacto(8))
                 cuerpo = self._leer_exacto(tam)
             except (EOFError, OSError) as e:
-                log("puerto cerrado:", e); return
+                log(msg("port_closed", error=e)); return
             if len(cuerpo) < 20:
                 continue
             proto, tipo, _opaque, tam_datos = struct.unpack("<IIQI", cuerpo[:20])
@@ -119,7 +161,7 @@ class Agente:
             if len(datos) >= 8:
                 solicitar, caps = struct.unpack("<II", datos[:8])
                 self.usa_seleccion = bool(caps & (1 << CAP_CLIPBOARD_SELECTION))
-                log("capacidades del cliente: selección =", self.usa_seleccion)
+                log(msg("capabilities", value=self.usa_seleccion))
                 if solicitar:
                     self.anunciar_capacidades(solicitar=0)
 
@@ -140,7 +182,7 @@ class Agente:
                     texto = d[4:].decode("utf-8", "replace")
                     escribir_portapapeles(texto)
                     self.ultimo_local = texto
-                    log("recibido del anfitrión:", len(texto), "bytes")
+                    log(msg("clipboard_received", size=len(texto)))
 
         elif tipo == MSG_CLIPBOARD_RELEASE:
             pass
@@ -162,7 +204,7 @@ def escribir_portapapeles(texto):
         subprocess.run(["wl-copy", "--type", "text/plain;charset=utf-8"],
                        input=texto.encode("utf-8"), timeout=5)
     except Exception as e:
-        log("wl-copy falló:", e)
+        log(msg("wl_copy_failed", error=e))
 
 
 def vigilar_invitado(ag):
@@ -178,14 +220,13 @@ def vigilar_invitado(ag):
 
 def main():
     if not os.path.exists(PUERTO):
-        print(f"no existe {PUERTO}.", file=sys.stderr)
-        print("En UTM: Ajustes de la VM → Compartir → activa 'Compartir portapapeles'.",
-              file=sys.stderr)
+        print(msg("missing_port", port=PUERTO), file=sys.stderr)
+        print(msg("clipboard_setup"), file=sys.stderr)
         return 1
     for cmd in ("wl-paste", "wl-copy"):
         if subprocess.run(["sh", "-c", f"command -v {cmd}"],
                           capture_output=True).returncode != 0:
-            print(f"falta {cmd} (paquete wl-clipboard)", file=sys.stderr)
+            print(msg("missing_command", cmd=cmd), file=sys.stderr)
             return 1
 
     fd = os.open(PUERTO, os.O_RDWR)

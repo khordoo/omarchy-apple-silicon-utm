@@ -23,11 +23,30 @@
 #
 set -uo pipefail
 
+if [ -z "${OMARCHY_LANG+x}" ] && [ -r /etc/omarchy-arm-language ]; then
+  OMARCHY_LANG=$(cat /etc/omarchy-arm-language)
+fi
+export OMARCHY_LANG
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /usr/local/share/omarchy/catalog.sh /root/prov/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
+
 SHARE="${OMARCHY_CLIPBOARD_DIR:-/mnt/share}"
 FILE="$SHARE/.clipboard"
 INTERVALO="${OMARCHY_CLIPBOARD_INTERVAL:-1}"
 
-uso() { sed -n '3,26p' "$0" | sed 's/^#\{0,2\} \{0,1\}//'; }
+uso() {
+  cat <<EOF
+$(msg clipboard_help_title)
+
+  omarchy-arm-clipboard             $(msg clipboard_help_watch)
+  omarchy-arm-clipboard --install   $(msg clipboard_help_install)
+  omarchy-arm-clipboard --host      $(msg clipboard_help_host)
+EOF
+}
 
 instalar() {
   mkdir -p ~/.config/systemd/user
@@ -48,7 +67,7 @@ RestartSec=5
 WantedBy=graphical-session.target
 UNIT
   systemctl --user daemon-reload
-  systemctl --user enable --now omarchy-arm-clipboard.service && echo "servicio activo"
+  systemctl --user enable --now omarchy-arm-clipboard.service && echo "$(msg clipboard_service_active)"
   systemctl --user --no-pager status omarchy-arm-clipboard.service | head -5
 }
 
@@ -59,7 +78,7 @@ script_anfitrion() {
 # carpeta que tengas compartida en los ajustes de la VM en UTM.
 #   ./clipboard-mac.sh ~/ruta/de/la/carpeta/compartida
 set -uo pipefail
-DIR="${1:?uso: $0 <carpeta compartida con la VM>}"
+  DIR="${1:?usage: $0 <shared folder with the VM>}"
 F="$DIR/.clipboard"
 mkdir -p "$DIR"; touch "$F"
 ultimo_local=""; ultimo_remoto="$(cat "$F" 2>/dev/null || true)"
@@ -78,13 +97,13 @@ MACEOF
 }
 
 vigilar() {
-  command -v wl-paste >/dev/null || { echo "falta wl-clipboard" >&2; exit 1; }
+  command -v wl-paste >/dev/null || { echo "$(msg clipboard_missing_package)" >&2; exit 1; }
   if [ ! -d "$SHARE" ]; then
-    echo "no hay carpeta compartida en $SHARE." >&2
-    echo "En UTM: Ajustes de la VM -> Compartir -> elige una carpeta, y reinicia." >&2
+    echo "$(msg clipboard_share_missing "$SHARE")" >&2
+    echo "$(msg clipboard_share_setup)" >&2
     exit 1
   fi
-  touch "$FILE" 2>/dev/null || { echo "no puedo escribir en $FILE" >&2; exit 1; }
+  touch "$FILE" 2>/dev/null || { echo "$(msg clipboard_write_failed "$FILE")" >&2; exit 1; }
   local ultimo_local ultimo_remoto actual remoto
   ultimo_local="$(wl-paste --no-newline 2>/dev/null || true)"
   ultimo_remoto="$(cat "$FILE" 2>/dev/null || true)"
@@ -110,5 +129,5 @@ case "${1:-}" in
   --host)    script_anfitrion ;;
   -h|--help) uso ;;
   "")        vigilar ;;
-  *)         echo "opcion desconocida: $1" >&2; uso >&2; exit 1 ;;
+  *)         echo "$(msg clipboard_unknown_option "$1")" >&2; uso >&2; exit 1 ;;
 esac

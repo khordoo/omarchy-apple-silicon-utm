@@ -7,18 +7,24 @@
 #
 # Se ejecuta como ROOT dentro del chroot (sin sudo).
 set -uo pipefail
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /usr/local/share/omarchy/catalog.sh /root/prov/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
 USR=gabriel
 OM=/home/$USR/.local/share/omarchy
 log() { echo ""; echo "==> $*"; }
 
-[ -d "$OM" ] || { echo "!! no existe $OM"; exit 1; }
+[ -d "$OM" ] || { echo "!! $(msg paths_missing "$OM")"; exit 1; }
 
-log "1/8 arbol en /usr/share/omarchy"
+log "$(msg paths_step1)"
 ln -sfn "$OM" /usr/share/omarchy
 ls -ld /usr/share/omarchy
 ls /usr/share/omarchy/default/hypr/ | head
 
-log "2/8 binarios de Omarchy en el PATH del sistema"
+log "$(msg paths_step2)"
 # El paquete los publica como /usr/bin/omarchy-*; usamos /usr/local/bin para no
 # invadir territorio de pacman. Va antes que /usr/bin y esta en el secure_path
 # de sudo, asi que tambien lo ven SDDM y systemd.
@@ -29,15 +35,15 @@ for f in "$OM"/bin/*; do
   chmod +x "$f"
   ln -sfn "$f" "/usr/local/bin/$(basename "$f")" && n=$((n+1))
 done
-echo "  $n binarios enlazados"
+echo "  $(msg paths_linked "$n")"
 ls -l /usr/local/bin/start-hyprland /usr/local/bin/omarchy-theme-set 2>&1 | head -3
 
-log "3/8 hooks de shell y de sesion uwsm"
+log "$(msg paths_step3)"
 install -Dm644 "$OM/etc/profile.d/omarchy.sh" /etc/profile.d/omarchy.sh
 install -Dm644 "$OM/default/uwsm/env.d/10-omarchy" /usr/share/uwsm/env.d/10-omarchy
 cat /etc/profile.d/omarchy.sh
 
-log "4/8 configuracion de sistema del repo (lo aplicable a una VM)"
+log "$(msg paths_step4)"
 cp -a "$OM/etc/sysctl.d/."  /etc/sysctl.d/  2>/dev/null || true
 cp -a "$OM/etc/security/."  /etc/security/  2>/dev/null || true
 for d in system.conf.d user.conf.d logind.conf.d oomd.conf.d; do
@@ -46,7 +52,7 @@ done
 [ -d "$OM/etc/fastfetch" ] && cp -a "$OM/etc/fastfetch" /etc/ 2>/dev/null || true
 [ -d "$OM/etc/gnupg" ] && cp -a "$OM/etc/gnupg/." /etc/gnupg/ 2>/dev/null || true
 
-log "5/8 SDDM: tema Omarchy, compositor y autologin"
+log "$(msg paths_step5)"
 mkdir -p /usr/share/sddm/themes /usr/local/share/wayland-sessions /etc/sddm.conf.d
 cp -a "$OM/default/sddm/omarchy" /usr/share/sddm/themes/ 2>/dev/null || true
 [ -f "$OM/default/sddm/hyprland.lua" ] && cp -a "$OM/default/sddm/hyprland.lua" /usr/share/sddm/hyprland.lua
@@ -63,10 +69,10 @@ for p in /etc/pam.d/sddm /etc/pam.d/sddm-autologin /etc/pam.d/sddm-greeter; do
 done
 ls /usr/share/sddm/themes/ /etc/sddm.conf.d/
 
-log "6/8 theme-system.sh de Omarchy"
+log "$(msg paths_step6)"
 bash "$OM/install/config/theme-system.sh" 2>&1 | tail -3 || true
 
-log "7/8 servicios y acceso"
+log "$(msg paths_step7)"
 systemctl enable systemd-oomd.service 2>/dev/null || true
 systemctl enable sshd.service 2>/dev/null || true
 systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
@@ -76,11 +82,11 @@ cp /root/prov/omkey.pub /home/$USR/.ssh/authorized_keys
 chown $USR:$USR /home/$USR/.ssh/authorized_keys
 chmod 600 /home/$USR/.ssh/authorized_keys
 
-log "8/8 tema como usuario, ya con el entorno correcto"
-su - $USR -c 'export OMARCHY_PATH=/usr/share/omarchy; export PATH=/usr/local/bin:$PATH; mkdir -p ~/.config/omarchy/themes; omarchy-theme-set "Tokyo Night" 2>&1 | tail -5' || echo "  (theme-set fallo)"
+log "$(msg paths_step8)"
+su - $USR -c 'export OMARCHY_PATH=/usr/share/omarchy; export PATH=/usr/local/bin:$PATH; mkdir -p ~/.config/omarchy/themes; omarchy-theme-set "Tokyo Night" 2>&1 | tail -5' || echo "  ($(msg paths_theme_failed))"
 su - $USR -c 'ls -l ~/.config/omarchy/current/ 2>/dev/null; echo "OMARCHY_PATH=[$OMARCHY_PATH]"; command -v omarchy-menu start-hyprland' || true
 
-log "comprobacion"
+log "$(msg paths_check)"
 echo "  bootstrap.lua: $(ls /usr/share/omarchy/default/hypr/bootstrap.lua 2>&1)"
 echo "  bashrc:        $(su - $USR -c 'bash -ic true' 2>&1 | tail -1)"
 echo ""

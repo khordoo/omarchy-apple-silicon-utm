@@ -56,6 +56,1204 @@ set -uo pipefail
 : "${ALPINE_ISO:=alpine-virt-3.24.1-aarch64.iso}"
 : "${ALARM_URL:=http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz}"
 
+# ── self-contained localization catalog ────────────────────────────────────
+# OMARCHY_LOCALIZATION_CATALOG is kept in sync with localization/catalog.sh.
+# Do not source a file here: this builder is intentionally distributable as one
+# standalone script.  The catalog uses only Bash 3.2 features.
+# OMARCHY_LOCALIZATION_CATALOG
+omarchy_msg() {
+  local key="${1:-}"; shift || true
+  local text
+  if [ -z "${OMARCHY_LANG:-}" ] && [ -r /etc/omarchy-arm-language ]; then
+    OMARCHY_LANG=$(cat /etc/omarchy-arm-language 2>/dev/null || true)
+  fi
+  case "${OMARCHY_LANG:-en}:$key" in
+    en:usage) text='Usage: ./build-omarchy-arm.sh [options]\n\nOptions:\n  --lang en|es       Installer language (default: English)\n  --from PHASE       Resume from a phase\n  --only PHASE       Run one phase\n  --list             List phases\n  --yes              Accept defaults and run without prompts\n  -h, --help         Show this help\n' ;;
+    es:usage) text='Uso: ./build-omarchy-arm.sh [opciones]\n\nOpciones:\n  --lang en|es       Idioma del instalador (por defecto: ingles)\n  --from FASE        Reanudar desde una fase\n  --only FASE        Ejecutar una fase\n  --list             Listar fases\n  --yes              Aceptar valores y ejecutar sin preguntas\n  -h, --help         Mostrar esta ayuda\n' ;;
+    en:build_login) text='the Alpine live did not reach the login' ;;
+    es:build_login) text='el live de Alpine no llego al login' ;;
+    en:build_shell) text='no Alpine root shell' ;;
+    es:build_shell) text='no hay shell de root en Alpine' ;;
+    en:build_prompt) text='could not set the prompt' ;;
+    es:build_prompt) text='no se pudo fijar el prompt' ;;
+    en:build_iso) text='provisioning ISO not found' ;;
+    es:build_iso) text='no se encontro el ISO de aprovisionamiento' ;;
+    en:build_rootfs) text='Arch Linux ARM rootfs missing from the ISO' ;;
+    es:build_rootfs) text='falta el rootfs de Arch Linux ARM en el ISO' ;;
+    en:build_tail) text='tail' ;;
+    es:build_tail) text='tail' ;;
+    en:build_success) text='   BUILD COMPLETED' ;;
+    es:build_success) text='   CONSTRUCCION COMPLETADA' ;;
+    en:build_failed) text='!!!!!! BUILD FAILED !!!!!!' ;;
+    es:build_failed) text='!!!!!! LA CONSTRUCCION FALLO !!!!!!' ;;
+    en:build_eof) text='EOF during build' ;;
+    es:build_eof) text='EOF durante la construccion' ;;
+    en:build_shutdown) text='===== BUILD VM SHUT DOWN =====' ;;
+    es:build_shutdown) text='===== VM DE CONSTRUCCION APAGADA =====' ;;
+    en:verification) text='verification' ;;
+    es:verification) text='verificacion' ;;
+    en:verify_heading) text='==== VERIFICATION ====' ;;
+    es:verify_heading) text='==== VERIFICACION ====' ;;
+    en:verify_esp) text='-- ESP --' ;;
+    es:verify_esp) text='-- ESP --' ;;
+    en:verify_kernel) text='-- kernel --' ;;
+    es:verify_kernel) text='-- kernel --' ;;
+    en:verify_user) text='-- user --' ;;
+    es:verify_user) text='-- usuario --' ;;
+    en:verify_dotfiles) text='-- dotfiles --' ;;
+    es:verify_dotfiles) text='-- dotfiles --' ;;
+    en:verify_hyprland) text='-- Hyprland --' ;;
+    es:verify_hyprland) text='-- hyprland --' ;;
+    en:no_login) text='login did not appear' ;;
+    es:no_login) text='no aparece el login' ;;
+    en:no_shell) text='shell did not appear' ;;
+    es:no_shell) text='no hay shell' ;;
+    en:system) text='system' ;;
+    es:system) text='sistema' ;;
+    en:storage) text='storage' ;;
+    es:storage) text='almacenamiento' ;;
+    en:services) text='services' ;;
+    es:services) text='servicios' ;;
+    en:failed) text='failed' ;;
+    es:failed) text='fallidos' ;;
+    en:packages) text='packages' ;;
+    es:packages) text='paquetes' ;;
+    en:theme) text='theme' ;;
+    es:theme) text='tema' ;;
+    en:network) text='network' ;;
+    es:network) text='red' ;;
+    en:session) text='graphical session' ;;
+    es:session) text='sesion grafica' ;;
+    en:gpu) text='GPU / virgl' ;;
+    es:gpu) text='GPU / virgl' ;;
+    en:boot_errors) text='boot errors' ;;
+    es:boot_errors) text='errores del arranque' ;;
+    en:end) text='END' ;;
+    es:end) text='FIN' ;;
+    en:omssh_missing_host) text='OM_HOST is required (example: OM_HOST=192.168.64.20)' ;;
+    es:omssh_missing_host) text='Hace falta OM_HOST (ejemplo: OM_HOST=192.168.64.20)' ;;
+    en:host_macos) text='this runs only on macOS' ;;
+    es:host_macos) text='esto solo corre en macOS' ;;
+    en:host_arm64) text='Apple Silicon is required (HVF for aarch64)' ;;
+    es:host_arm64) text='hace falta Apple Silicon (HVF para aarch64)' ;;
+    en:host_homebrew) text='Homebrew is required: https://brew.sh' ;;
+    es:host_homebrew) text='falta Homebrew: https://brew.sh' ;;
+    en:host_installing) text='installing %s...' ;;
+    es:host_installing) text='instalando %s...' ;;
+    en:host_qemu) text='qemu-system-aarch64 is missing' ;;
+    es:host_qemu) text='falta qemu-system-aarch64' ;;
+    en:host_expect) text='expect is missing' ;;
+    es:host_expect) text='falta expect' ;;
+    en:host_clt) text='%s is missing (did you run xcode-select --install?)' ;;
+    es:host_clt) text='falta %s (¿ejecutaste xcode-select --install?)' ;;
+    en:host_utm) text='UTM is missing: brew install --cask utm' ;;
+    es:host_utm) text='falta UTM: brew install --cask utm' ;;
+    en:host_disk_space) text='about 40 GB free space is required (%s GB available)' ;;
+    es:host_disk_space) text='hacen falta ~40 GB libres (hay %s GB)' ;;
+    en:host_deps_ok) text='qemu %s, UTM %s, %s GB free' ;;
+    es:host_deps_ok) text='qemu %s, UTM %s, %s GB libres' ;;
+    en:fetch_index_failed) text='could not read the Alpine index; using %s' ;;
+    es:fetch_index_failed) text='no pude leer el indice de Alpine; uso %s' ;;
+    en:fetch_alpine_info) text='Alpine %s (live environment for bootstrap)' ;;
+    es:fetch_alpine_info) text='Alpine %s (entorno live para el bootstrap)' ;;
+    en:fetch_alpine_failed) text='could not download Alpine (%s)' ;;
+    es:fetch_alpine_failed) text='no se pudo descargar Alpine (%s)' ;;
+    en:fetch_checksum_failed) text='Alpine ISO does not match its published sha256' ;;
+    es:fetch_checksum_failed) text='el ISO de Alpine no cuadra con su sha256 publicado' ;;
+    en:fetch_checksum_missing) text='no published sha256: not verified' ;;
+    es:fetch_checksum_missing) text='sin sha256 publicado: no verificado' ;;
+    en:fetch_checksum_ok) text='sha256 verified' ;;
+    es:fetch_checksum_ok) text='sha256 verificado' ;;
+    en:fetch_alpine_done) text='Alpine %s' ;;
+    es:fetch_alpine_done) text='Alpine %s' ;;
+    en:fetch_rootfs_info) text='Arch Linux ARM rootfs (~800 MB)' ;;
+    es:fetch_rootfs_info) text='rootfs de Arch Linux ARM (~800 MB)' ;;
+    en:fetch_rootfs_failed) text='could not download the ALARM rootfs' ;;
+    es:fetch_rootfs_failed) text='no se pudo descargar el rootfs de ALARM' ;;
+    en:fetch_md5_missing) text='could not read %s.md5: rootfs is NOT verified' ;;
+    es:fetch_md5_missing) text='no pude leer %s.md5: el rootfs queda SIN verificar' ;;
+    en:fetch_md5_mismatch) text='MD5 mismatch (expected %s, got %s); downloading again' ;;
+    es:fetch_md5_mismatch) text='MD5 no coincide (esperado %s, obtenido %s); se vuelve a descargar' ;;
+    en:fetch_md5_failed) text='the ALARM rootfs still fails verification after retrying' ;;
+    es:fetch_md5_failed) text='el rootfs de ALARM sigue sin cuadrar tras reintentar' ;;
+    en:fetch_md5_unverified) text='rootfs ALARM %s, not verified' ;;
+    es:fetch_md5_unverified) text='rootfs ALARM %s, sin verificar' ;;
+    en:fetch_md5_ok) text='rootfs ALARM %s, MD5 verified' ;;
+    es:fetch_md5_ok) text='rootfs ALARM %s, MD5 verificado' ;;
+    en:prepare_ref_missing) text="branch '%s' does not exist and the default branch could not be read" ;;
+    es:prepare_ref_missing) text="la rama '%s' no existe y no pude leer la rama por defecto de Omarchy" ;;
+    en:prepare_ref_fallback) text="branch '%s' no longer exists; using '%s'" ;;
+    es:prepare_ref_fallback) text="la rama '%s' ya no existe en Omarchy; se usa '%s'" ;;
+    en:prepare_ref_warning) text='check that the structure has not changed: this build assumes Omarchy 4' ;;
+    es:prepare_ref_warning) text='revisa que la estructura no haya cambiado: este build asume Omarchy 4' ;;
+    en:prepare_packages_failed) text='could not read the Omarchy package list' ;;
+    es:prepare_packages_failed) text='no se pudo leer la lista de paquetes de Omarchy' ;;
+    en:prepare_mirror_failed) text='ALARM mirror is not responding' ;;
+    es:prepare_mirror_failed) text='mirror ALARM no responde' ;;
+    en:prepare_lists_failed) text='could not write package lists' ;;
+    es:prepare_lists_failed) text='no se pudieron escribir las listas de paquetes' ;;
+    en:prepare_lists_ok) text="lists generated for branch '%s': %s core, %s extra" ;;
+    es:prepare_lists_ok) text="listas generadas contra la rama '%s': %s en el nucleo, %s extras" ;;
+    en:build_iso_done) text='provisioning ISO %s' ;;
+    es:build_iso_done) text='ISO de aprovisionamiento %s' ;;
+    en:build_rebuild_previous) text='the previous disk remains at %s' ;;
+    es:build_rebuild_previous) text='el anterior queda en %s' ;;
+    en:build_start) text='starting the builder (Alpine live → chroot → 3 stages)' ;;
+    es:build_start) text='arrancando el constructor (Alpine live → chroot → 3 etapas)' ;;
+    en:build_duration) text='this takes about 40 min depending on the network; full log: %s' ;;
+    es:build_duration) text='esto tarda ~40 min segun la red; el log completo en %s' ;;
+    en:build_stage3_failed) text='stage3 failed: disk exists but lacks the Omarchy configuration. Log: %s' ;;
+    es:build_stage3_failed) text='stage3 fallo: el disco existe pero no tiene la configuracion de Omarchy. Log: %s' ;;
+    en:build_failed_rc) text='build failed (rc=%s); see %s' ;;
+    es:build_failed_rc) text='la construccion fallo (rc=%s); revisa %s' ;;
+    en:build_disk_done) text='built disk: %s' ;;
+    es:build_disk_done) text='disco construido: %s' ;;
+    en:build_disk_missing) text='no built disk; run the build phase' ;;
+    es:build_disk_missing) text='no hay disco construido; ejecuta la fase build' ;;
+    en:utm_registering) text="will register as '%s'" ;;
+    es:utm_registering) text="se registrara como '%s'" ;;
+    en:utm_make_failed) text='make-utm.sh failed; full log: %s' ;;
+    es:utm_make_failed) text='make-utm.sh fallo; log completo: %s' ;;
+    en:utm_bundle_missing) text='bundle was not left in %s' ;;
+    es:utm_bundle_missing) text='el bundle no quedo en %s' ;;
+    en:utm_bundle_done) text='bundle created at %s' ;;
+    es:utm_bundle_done) text='bundle creado en %s' ;;
+    en:verify_waiting) text='waiting for boot...' ;;
+    es:verify_waiting) text='esperando al arranque...' ;;
+    en:verify_pty_missing) text='could not obtain the serial port; check manually' ;;
+    es:verify_pty_missing) text='no se pudo obtener el puerto serie; comprueba a mano' ;;
+    en:verify_ok) text="VM '%s' verified: Omarchy 4, Hyprland + quickshell alive, commands and units present" ;;
+    es:verify_ok) text="VM '%s' verificada: Omarchy 4, Hyprland + quickshell vivos, comandos y unidades en su sitio" ;;
+    en:verify_incomplete) text='VM boots but the desktop is incomplete; log: %s' ;;
+    es:verify_incomplete) text='la VM arranca pero el escritorio no esta completo; log en %s' ;;
+    en:verify_no_response) text='no response on the serial port; check the UTM window manually' ;;
+    es:verify_no_response) text='no hubo respuesta por el puerto serie; comprueba a mano la ventana de UTM' ;;
+    en:sanitize_copy_done) text='working copy created (the original VM is untouched)' ;;
+    es:sanitize_copy_done) text='copia de trabajo hecha (la VM original no se toca)' ;;
+    en:sanitize_start) text='sanitizing (generic user, no keys or identity)...' ;;
+    es:sanitize_start) text='limpiando (usuario generico, sin claves ni identidad)...' ;;
+    en:sanitize_failed) text='sanitize failed; see %s' ;;
+    es:sanitize_failed) text='la limpieza fallo; revisa %s' ;;
+    en:sanitize_done) text='sanitized image' ;;
+    es:sanitize_done) text='imagen sanitizada' ;;
+    en:package_missing) text='no sanitized image; run the sanitize phase' ;;
+    es:package_missing) text='no hay imagen sanitizada; ejecuta la fase sanitize' ;;
+    en:package_compacting) text='compacting and compressing qcow2 clusters...' ;;
+    es:package_compacting) text='compactando y comprimiendo los clusters del qcow2...' ;;
+    en:package_convert_failed) text='qemu-img convert failed' ;;
+    es:package_convert_failed) text='qemu-img convert fallo' ;;
+    en:package_check_failed) text='the compacted image did not validate' ;;
+    es:package_check_failed) text='la imagen compactada no valida' ;;
+    en:package_bundle_failed) text='could not create the distributable bundle' ;;
+    es:package_bundle_failed) text='no se pudo crear el bundle distribuible' ;;
+    en:package_config_user) text="bundle config.plist mentions '%s'; check make-utm.sh" ;;
+    es:package_config_user) text="el config.plist del bundle menciona a '%s'; revisa make-utm.sh" ;;
+    en:package_compressing) text='compressing...' ;;
+    es:package_compressing) text='comprimiendo...' ;;
+    en:package_done) text='ready: %s (%s)' ;;
+    es:package_done) text='listo: %s (%s)' ;;
+    en:package_sizes) text='%s → %s' ;;
+    es:package_sizes) text='%s → %s' ;;
+    en:sanitize_motd_title) text='Omarchy on Arch Linux ARM (aarch64) — UTM image for Apple Silicon' ;;
+    es:sanitize_motd_title) text='Omarchy sobre Arch Linux ARM (aarch64) — imagen para UTM en Apple Silicon' ;;
+    en:sanitize_motd_credentials) text='User: %s · Password: %s (also root).' ;;
+    es:sanitize_motd_credentials) text='Usuario: %s · Contrasena: %s (tambien root).' ;;
+    en:sanitize_motd_change_password) text='Change it with passwd.' ;;
+    es:sanitize_motd_change_password) text='Cambiala con passwd.' ;;
+    en:sanitize_motd_keys) text='SSH keys were removed for distribution.' ;;
+    es:sanitize_motd_keys) text='Las claves SSH se eliminaron para distribuirla.' ;;
+    en:sanitize_motd_shortcuts) text='The Option key (⌥) acts as SUPER.' ;;
+    es:sanitize_motd_shortcuts) text='La tecla Option (⌥) actua como SUPER.' ;;
+    en:sanitize_motd_missing_apps) text='Some proprietary apps may be missing; see omarchy-arm-extras.' ;;
+    es:sanitize_motd_missing_apps) text='Pueden faltar apps propietarias; mira omarchy-arm-extras.' ;;
+    en:sanitize_motd_license) text='Omarchy is free software; see the project license.' ;;
+    es:sanitize_motd_license) text='Omarchy es software libre; consulta la licencia del proyecto.' ;;
+    en:sanitize_motd_extras_list) text='Available optional apps: 1Password, Obsidian, Typora, LocalSend, Chrome, OBS, Pinta.' ;;
+    es:sanitize_motd_extras_list) text='Apps opcionales disponibles: 1Password, Obsidian, Typora, LocalSend, Chrome, OBS, Pinta.' ;;
+    en:sanitize_motd_extras_menu) text='Run omarchy-arm-extras for the interactive menu.' ;;
+    es:sanitize_motd_extras_menu) text='Ejecuta omarchy-arm-extras para abrir el menu interactivo.' ;;
+    en:unknown_option) text='unknown option: %s' ;;
+    es:unknown_option) text='opcion desconocida: %s' ;;
+    en:unknown_phase) text='unknown phase: %s' ;;
+    es:unknown_phase) text='fase desconocida: %s' ;;
+    en:phase_failed) text='phase failed: %s' ;;
+    es:phase_failed) text='fallo en la fase: %s' ;;
+    en:invalid_lang) text='Invalid language: %s (expected en or es)' ;;
+    es:invalid_lang) text='Idioma no valido: %s (se esperaba en o es)' ;;
+    en:missing_lang) text='Missing value for --lang (expected en or es)' ;;
+    es:missing_lang) text='Falta el valor de --lang (se esperaba en o es)' ;;
+    en:phase_deps) text='deps · host dependencies' ;;
+    es:phase_deps) text='deps · dependencias del anfitrion' ;;
+    en:phase_fetch) text='fetch · base images' ;;
+    es:phase_fetch) text='fetch · imagenes base' ;;
+    en:phase_prepare) text='prepare · package list' ;;
+    es:phase_prepare) text='prepare · lista de paquetes' ;;
+    en:phase_build) text='build · disk construction (headless, QEMU + HVF)' ;;
+    es:phase_build) text='build · construccion del disco (headless, QEMU + HVF)' ;;
+    en:phase_utm) text='utm · .utm bundle' ;;
+    es:phase_utm) text='utm · bundle .utm' ;;
+    en:phase_verify) text='verify · boot and check' ;;
+    es:phase_verify) text='verify · arranque y comprobacion' ;;
+    en:phase_sanitize) text='sanitize · clean copy for distribution' ;;
+    es:phase_sanitize) text='sanitize · copia limpia para distribuir' ;;
+    en:phase_package) text='package · compact and compress' ;;
+    es:phase_package) text='package · compactar y comprimir' ;;
+    en:config) text='configuration' ;;
+    es:config) text='configuracion' ;;
+    en:config_hint) text='Press Enter to accept the value in brackets. Detected from your Mac.' ;;
+    es:config_hint) text='Enter acepta el valor entre corchetes. Detectados de tu Mac.' ;;
+    en:timezone) text='Timezone' ;;
+    es:timezone) text='Zona horaria' ;;
+    en:keyboard_console) text='Keyboard (console)' ;;
+    es:keyboard_console) text='Teclado (consola)' ;;
+    en:keyboard_wayland) text='Keyboard (Hyprland/Wayland)' ;;
+    es:keyboard_wayland) text='Teclado (Hyprland/Wayland)' ;;
+    en:vm_cpus) text='VM CPUs' ;;
+    es:vm_cpus) text='Nucleos para la VM' ;;
+    en:vm_memory) text='VM memory (MiB)' ;;
+    es:vm_memory) text='Memoria para la VM (MiB)' ;;
+    en:disk_size) text='Disk size' ;;
+    es:disk_size) text='Tamano del disco' ;;
+    en:confirm_tools) text='Compile the 17 Omarchy tools unavailable for ARM (~40 min)?' ;;
+    es:confirm_tools) text='Compilar las 17 herramientas de Omarchy que no existen para ARM (~40 min)?' ;;
+    en:no_tools) text='Without them, ttfx, tensaku, omacalc, omacut, omawrite, aether and cliamp will be missing.' ;;
+    es:no_tools) text='Sin ellas faltaran ttfx, tensaku, omacalc, omacut, omawrite, aether, cliamp...' ;;
+    en:confirm_free) text='Include OBS Studio and Pinta (free software, compile time: ~45 min)?' ;;
+    es:confirm_free) text='Incluir OBS Studio y Pinta (software libre, se compilan: ~45 min)?' ;;
+    en:free_after) text='You can add them later from inside the VM: omarchy-arm-extras pinta obs' ;;
+    es:free_after) text='Se pueden anadir despues desde dentro: omarchy-arm-extras pinta obs' ;;
+    en:use_choices) text='Two possible uses:' ;;
+    es:use_choices) text='Dos usos posibles:' ;;
+    en:dist_desc) text='distribution image → renames the user to %s, removes SSH keys and identity, and creates a ~6.5 GB zip (~30 min extra)' ;;
+    es:dist_desc) text='imagen para repartir → renombra el usuario a %s, borra claves SSH e identidad, y genera un zip de ~6,5 GB (~30 min extra)' ;;
+    en:personal_desc) text='personal VM → keeps the current %s user' ;;
+    es:personal_desc) text='VM para ti → se queda como esta, con el usuario %s' ;;
+    en:confirm_dist) text='Prepare the image for distribution?' ;;
+    es:confirm_dist) text='Preparar la imagen para repartir?' ;;
+    en:dist_user) text='Distribution image user' ;;
+    es:dist_user) text='Usuario de la imagen distribuible' ;;
+    en:vm_user) text='VM user' ;;
+    es:vm_user) text='Usuario de la VM' ;;
+    en:password) text='Password' ;;
+    es:password) text='Contrasena' ;;
+    en:fullname) text='Full name' ;;
+    es:fullname) text='Nombre completo' ;;
+    en:summary) text='Summary: %s/%s · %s · %s CPUs · %s MiB · disk %s' ;;
+    es:summary) text='resumen: %s/%s · %s · %s nucleos · %s MiB · disco %s' ;;
+    en:summary_tools) text='         tools: %s · OBS+Pinta: %s · distribution: %s' ;;
+    es:summary_tools) text='         herramientas: %s · OBS+Pinta: %s · repartir: %s' ;;
+    en:display_yes) text='yes' ;;
+    es:display_yes) text='si' ;;
+    en:display_no) text='no' ;;
+    es:display_no) text='no' ;;
+    en:yesno_yes) text='Y/n' ;;
+    es:yesno_yes) text='S/n' ;;
+    en:yesno_no) text='y/N' ;;
+    es:yesno_no) text='s/N' ;;
+    en:cancelled) text='cancelled' ;;
+    es:cancelled) text='cancelado' ;;
+    en:complete) text='Completed in %s min.' ;;
+    es:complete) text='Completado en %s min.' ;;
+    en:confirm_rebuild) text='A disk already exists (%s). Discard it and rebuild?' ;;
+    es:confirm_rebuild) text='Ya existe un disco construido (%s). ¿Descartarlo y reconstruir?' ;;
+    en:confirm_vm_delete) text='A VM named %s already exists in UTM. Delete and replace it?' ;;
+    es:confirm_vm_delete) text='Ya existe una VM llamada %s en UTM. ¿Borrarla y reemplazarla?' ;;
+    en:confirm_start) text='Start?' ;;
+    es:confirm_start) text='Empezar?' ;;
+    en:dist_motd) text='Omarchy on Arch Linux ARM (aarch64) — UTM image for Apple Silicon' ;;
+    es:dist_motd) text='Omarchy sobre Arch Linux ARM (aarch64) — imagen para UTM en Apple Silicon' ;;
+    en:extra_desktop_name) text='Install missing apps (ARM)' ;;
+    es:extra_desktop_name) text='Instalar apps que faltan (ARM)' ;;
+    en:extra_desktop_comment) text='1Password, Obsidian, Typora, LocalSend, Chrome, OBS, Pinta' ;;
+    es:extra_desktop_comment) text='1Password, Obsidian, Typora, LocalSend, Chrome, OBS, Pinta' ;;
+    en:stage1_network) text='network' ;;
+    es:stage1_network) text='red' ;;
+    en:stage1_tools) text='Alpine repositories and tools' ;;
+    es:stage1_tools) text='repositorios y herramientas de Alpine' ;;
+    en:stage2_locale) text='timezone, locales, keyboard, hostname' ;;
+    es:stage2_locale) text='zona horaria, locales, teclado, hostname' ;;
+    en:stage3_clone) text='cloning basecamp/omarchy (branch %s = Omarchy 4; master is 3.8.5)' ;;
+    es:stage3_clone) text='clonando basecamp/omarchy (rama %s = Omarchy 4; master es 3.8.5)' ;;
+    en:repair_mount) text='mounting installed system' ;;
+    es:repair_mount) text='montando el sistema instalado' ;;
+    en:sanitize_motd) text='notice for the recipient' ;;
+    es:sanitize_motd) text='aviso al destinatario' ;;
+    en:armsync_title) text='Updating the Omarchy tree (git checkout)' ;;
+    es:armsync_title) text='Actualizar el arbol de Omarchy (checkout git)' ;;
+    en:armsync_pull_failed) text='fast-forward failed; the tree is unchanged' ;;
+    es:armsync_pull_failed) text='no se pudo hacer fast-forward; el arbol queda como estaba' ;;
+    en:armsync_current) text='already up to date (%s)' ;;
+    es:armsync_current) text='ya estaba al dia (%s)' ;;
+    en:armsync_linked) text='%s new binaries linked in /usr/bin' ;;
+    es:armsync_linked) text='%s binarios nuevos enlazados en /usr/bin' ;;
+    en:clipboard_help_title) text='Shared clipboard via the UTM shared folder' ;;
+    es:clipboard_help_title) text='Portapapeles compartido mediante la carpeta de UTM' ;;
+    en:clipboard_help_watch) text='watch (started by the user service)' ;;
+    es:clipboard_help_watch) text='vigila (lo lanza el servicio de usuario)' ;;
+    en:clipboard_help_install) text='install and start the service' ;;
+    es:clipboard_help_install) text='instala el servicio y lo arranca' ;;
+    en:clipboard_help_host) text='print the Mac host script' ;;
+    es:clipboard_help_host) text='imprime el script para el Mac' ;;
+    en:clipboard_service_active) text='service active' ;;
+    es:clipboard_service_active) text='servicio activo' ;;
+    en:clipboard_missing_package) text='wl-clipboard is missing' ;;
+    es:clipboard_missing_package) text='falta wl-clipboard' ;;
+    en:clipboard_share_missing) text='no shared folder at %s' ;;
+    es:clipboard_share_missing) text='no hay carpeta compartida en %s' ;;
+    en:clipboard_share_setup) text='In UTM: VM Settings → Sharing → choose a folder, then restart.' ;;
+    es:clipboard_share_setup) text='En UTM: Ajustes de la VM → Compartir → elige una carpeta, y reinicia.' ;;
+    en:clipboard_write_failed) text='cannot write %s' ;;
+    es:clipboard_write_failed) text='no puedo escribir en %s' ;;
+    en:clipboard_unknown_option) text='unknown option: %s' ;;
+    es:clipboard_unknown_option) text='opcion desconocida: %s' ;;
+    en:desktop_name) text='Install missing apps (ARM)' ;;
+    es:desktop_name) text='Instalar apps que faltan (ARM)' ;;
+    en:script_prepare_iso) text='preparing provisioning ISO' ;;
+    es:script_prepare_iso) text='preparando ISO de aprovisionamiento' ;;
+    en:script_clean_disk) text='removing previous disk' ;;
+    es:script_clean_disk) text='eliminando el disco anterior' ;;
+    en:script_building) text='building the VM' ;;
+    es:script_building) text='construyendo la VM' ;;
+    en:qemu_missing_disk) text='DISK_IMG is not set' ;;
+    es:qemu_missing_disk) text='DISK_IMG no esta definido' ;;
+    en:qemu_shot_starting) text='starting screenshot VM' ;;
+    es:qemu_shot_starting) text='arrancando la VM para capturar' ;;
+    en:qemu_shot_waiting) text='waiting' ;;
+    es:qemu_shot_waiting) text='esperando' ;;
+    en:qemu_shot_capture) text='screenshot' ;;
+    es:qemu_shot_capture) text='captura' ;;
+    en:utm_missing_disk) text='missing disk: %s' ;;
+    es:utm_missing_disk) text='falta el disco: %s' ;;
+    en:utm_missing_vars) text='missing UEFI NVRAM template: %s' ;;
+    es:utm_missing_vars) text='falta la plantilla de NVRAM UEFI: %s' ;;
+    en:utm_running_vms) text='VMs currently running in UTM:' ;;
+    es:utm_running_vms) text='HAY VMs EN MARCHA en UTM:' ;;
+    en:utm_restart_warning) text='Registering the bundle requires restarting UTM, which stops them.' ;;
+    es:utm_restart_warning) text='Para registrar el bundle hay que reiniciar UTM, y eso las cortaria.' ;;
+    en:utm_close_prompt) text='Close them and restart UTM?' ;;
+    es:utm_close_prompt) text='¿Cerrarlas y reiniciar UTM?' ;;
+    en:utm_manual_import) text='UTM was not restarted: import the bundle manually.' ;;
+    es:utm_manual_import) text='no se reinicia UTM: importa el bundle a mano' ;;
+    en:utm_unattended) text='unattended mode: UTM is not closed; import the bundle manually' ;;
+    es:utm_unattended) text='modo desatendido: NO se cierra UTM. Importa el bundle a mano.' ;;
+    en:utm_closing) text='closing UTM so it rescans Documents' ;;
+    es:utm_closing) text='cerrando UTM para que reescanee Documents' ;;
+    en:utm_creating) text='creating' ;;
+    es:utm_creating) text='creando' ;;
+    en:utm_copying) text='copying disk' ;;
+    es:utm_copying) text='copiando disco' ;;
+    en:utm_notes) text='Arch Linux ARM (aarch64) + Hyprland + Omarchy 4 dotfiles. User: %s · Password: %s (also root). Change it with passwd. The Option key (⌥) acts as SUPER. Read LEEME.md.' ;;
+    es:utm_notes) text='Arch Linux ARM (aarch64) + Hyprland + dotfiles de Omarchy 4. Usuario: %s · Contraseña: %s (también root). Cámbiala con passwd. La tecla Option (⌥) actúa como SUPER. Lee LEEME.md.' ;;
+    en:utm_validate) text='validating plist' ;;
+    es:utm_validate) text='validando el plist' ;;
+    en:utm_opening) text='opening UTM to register the bundle' ;;
+    es:utm_opening) text='abriendo UTM para que registre el bundle' ;;
+    en:utm_not_registered) text='bundle created outside UTM Documents (not registered)' ;;
+    es:utm_not_registered) text='bundle creado fuera de la carpeta de UTM (no se registra)' ;;
+    en:utm_bundle) text='Bundle' ;;
+    es:utm_bundle) text='Bundle' ;;
+    en:utm_uuid) text='UUID' ;;
+    es:utm_uuid) text='UUID' ;;
+    en:utm_start) text='Start' ;;
+    es:utm_start) text='Arrancar' ;;
+    en:stage1_network) text='network' ;;
+    es:stage1_network) text='red' ;;
+    en:stage1_no_ipv4) text='no IPv4' ;;
+    es:stage1_no_ipv4) text='sin IPv4' ;;
+    en:stage1_tools) text='Alpine repositories and tools' ;;
+    es:stage1_tools) text='repositorios y herramientas de Alpine' ;;
+    en:stage1_ok) text='ok' ;;
+    es:stage1_ok) text='ok' ;;
+    en:stage1_fs_modules) text='loading live-kernel filesystem modules' ;;
+    es:stage1_fs_modules) text='cargando modulos de sistema de ficheros del kernel del live' ;;
+    en:stage1_btrfs_fallback) text='btrfs is unavailable in the live kernel; using ext4 for the root' ;;
+    es:stage1_btrfs_fallback) text='btrfs no disponible en el kernel del live -> se usara ext4 para la raiz' ;;
+    en:stage1_vfat_missing) text='vfat is not listed in /proc/filesystems' ;;
+    es:stage1_vfat_missing) text='vfat no listado en /proc/filesystems' ;;
+    en:stage1_root) text='root' ;;
+    es:stage1_root) text='raiz' ;;
+    en:stage1_filesystems) text='filesystems' ;;
+    es:stage1_filesystems) text='filesystems' ;;
+    en:stage1_partition) text='partitioning %s (GPT: ESP 1GiB + root %s)' ;;
+    es:stage1_partition) text='particionando %s (GPT: ESP 1GiB + raiz %s)' ;;
+    en:stage1_subvolumes) text='btrfs subvolumes @ and @home' ;;
+    es:stage1_subvolumes) text='subvolumenes btrfs @ y @home' ;;
+    en:stage1_deploy_rootfs) text='deploying Arch Linux ARM rootfs (bsdtar -xpf, preserving xattr/ACL)' ;;
+    es:stage1_deploy_rootfs) text='desplegando rootfs de Arch Linux ARM (bsdtar -xpf, preserva xattr/ACL)' ;;
+    en:stage1_contents) text='contents' ;;
+    es:stage1_contents) text='contenido' ;;
+    en:stage1_rootfs_incomplete) text='incomplete rootfs' ;;
+    es:stage1_rootfs_incomplete) text='rootfs incompleto' ;;
+    en:stage1_mount_esp) text='mounting the ESP at /boot' ;;
+    es:stage1_mount_esp) text='montando la ESP en /boot' ;;
+    en:stage1_mounts) text='chroot mounts' ;;
+    es:stage1_mounts) text='montajes del chroot' ;;
+    en:stage1_dns) text='DNS inside chroot' ;;
+    es:stage1_dns) text='DNS dentro del chroot' ;;
+    en:stage1_copy_payload) text='copying payload' ;;
+    es:stage1_copy_payload) text='copiando payload' ;;
+    en:stage1_chroot) text='entering chroot -> stage2' ;;
+    es:stage1_chroot) text='entrando en chroot -> stage2' ;;
+    en:stage1_unmount) text='unmounting' ;;
+    es:stage1_unmount) text='desmontando' ;;
+    en:stage1_finished) text='finished rc=%s' ;;
+    es:stage1_finished) text='terminado rc=%s' ;;
+    en:stage2_line_failed) text='failed at line %s' ;;
+    es:stage2_line_failed) text='fallo en la linea %s' ;;
+    en:stage2_keyring) text='initializing Arch Linux ARM keyring' ;;
+    es:stage2_keyring) text='inicializando el llavero de Arch Linux ARM' ;;
+    en:stage2_update) text='updating the system' ;;
+    es:stage2_update) text='actualizando el sistema' ;;
+    en:stage2_base) text='base system' ;;
+    es:stage2_base) text='sistema base' ;;
+    en:stage2_locale) text='timezone, locales, keyboard, hostname' ;;
+    es:stage2_locale) text='zona horaria, locales, teclado, hostname' ;;
+    en:stage2_fstab) text='fstab' ;;
+    es:stage2_fstab) text='fstab' ;;
+    en:stage2_user) text='user %s' ;;
+    es:stage2_user) text='usuario %s' ;;
+    en:stage2_initramfs) text='mkinitcpio (virtio + btrfs modules)' ;;
+    es:stage2_initramfs) text='mkinitcpio (modulos virtio + btrfs)' ;;
+    en:stage2_boot_empty) text='/boot is empty: reinstalling linux-aarch64' ;;
+    es:stage2_boot_empty) text='/boot vacio: reinstalando linux-aarch64' ;;
+    en:stage2_kernel_reinstall_failed) text='could not reinstall the kernel' ;;
+    es:stage2_kernel_reinstall_failed) text='no se pudo reinstalar el kernel' ;;
+    en:stage2_initramfs_failed) text='mkinitcpio failed after reinstall' ;;
+    es:stage2_initramfs_failed) text='mkinitcpio fallo tras reinstalar' ;;
+    en:stage2_kernel_missing) text='kernel image not found in /boot' ;;
+    es:stage2_kernel_missing) text='no encuentro la imagen del kernel en /boot' ;;
+    en:stage2_initramfs_missing) text='initramfs not found' ;;
+    es:stage2_initramfs_missing) text='no encuentro el initramfs' ;;
+    en:stage2_verbose) text='verbose' ;;
+    es:stage2_verbose) text='verboso' ;;
+    en:stage2_network) text='network: NetworkManager' ;;
+    es:stage2_network) text='red: NetworkManager (se desactiva systemd-networkd del tarball)' ;;
+    en:stage2_desktop) text='installing desktop stack (Hyprland + Omarchy tools)' ;;
+    es:stage2_desktop) text='instalando el stack de escritorio (Hyprland + herramientas de Omarchy)' ;;
+    en:stage2_packages) text='packages' ;;
+    es:stage2_packages) text='paquetes' ;;
+    en:stage2_batch_failed) text='%s batch installation failed; retrying one by one' ;;
+    es:stage2_batch_failed) text='%s: instalacion en bloque fallida; reintentando uno a uno' ;;
+    en:stage2_packages_failed) text='%s packages not installed: %s' ;;
+    es:stage2_packages_failed) text='%s no instalados: %s' ;;
+    en:stage2_core) text='core' ;;
+    es:stage2_core) text='nucleo' ;;
+    en:stage2_extras) text='extras' ;;
+    es:stage2_extras) text='extras' ;;
+    en:stage2_services) text='system services' ;;
+    es:stage2_services) text='servicios de sistema' ;;
+    en:stage2_sddm_missing) text='sddm unavailable' ;;
+    es:stage2_sddm_missing) text='sddm no disponible' ;;
+    en:stage2_udev_rule) text='udev rule for' ;;
+    es:stage2_udev_rule) text='regla udev para' ;;
+    en:stage2_share_ready) text='/mnt/share ready for the shared UTM folder' ;;
+    es:stage2_share_ready) text='/mnt/share listo para la carpeta compartida de UTM' ;;
+    en:stage2_stage3) text='stage 3: Omarchy dotfiles as %s' ;;
+    es:stage2_stage3) text='etapa 3: dotfiles de Omarchy como %s' ;;
+    en:stage2_stage3_available) text='stage3 available files' ;;
+    es:stage2_stage3_available) text='disponible para stage3' ;;
+    en:stage2_stage3_failed) text='stage3 finished with errors (rc=%s)' ;;
+    es:stage2_stage3_failed) text='stage3 termino con errores (rc=%s)' ;;
+    en:stage2_sddm_session) text='SDDM: Omarchy session with autologin' ;;
+    es:stage2_sddm_session) text='SDDM: sesion Omarchy con autologin' ;;
+    en:stage2_session) text='session' ;;
+    es:stage2_session) text='sesion' ;;
+    en:stage2_vm_tuning) text='virtual-machine settings' ;;
+    es:stage2_vm_tuning) text='ajustes propios de maquina virtual' ;;
+    en:stage2_cleanup) text='cleanup' ;;
+    es:stage2_cleanup) text='limpieza' ;;
+    en:stage2_summary) text='summary' ;;
+    es:stage2_summary) text='resumen' ;;
+    en:stage2_not_installed) text='NOT INSTALLED' ;;
+    es:stage2_not_installed) text='NO INSTALADO' ;;
+    en:stage2_user_label) text='user' ;;
+    es:stage2_user_label) text='usuario' ;;
+    en:stage2_missing) text='MISSING' ;;
+    es:stage2_missing) text='FALTAN' ;;
+    en:stage2_completed) text='COMPLETED' ;;
+    es:stage2_completed) text='COMPLETADO' ;;
+    en:stage3_clone) text='cloning basecamp/omarchy (branch %s = Omarchy 4)' ;;
+    es:stage3_clone) text='clonando basecamp/omarchy (rama %s = Omarchy 4)' ;;
+    en:stage3_clone_failed) text='clone failed' ;;
+    es:stage3_clone_failed) text='clone fallido' ;;
+    en:stage3_copy_dotfiles) text='copying dotfiles to ~/.config' ;;
+    es:stage3_copy_dotfiles) text='copiando dotfiles a ~/.config' ;;
+    en:stage3_aur) text='AUR components unavailable in Arch Linux ARM repositories' ;;
+    es:stage3_aur) text='AUR: piezas de Omarchy que no estan en los repos de Arch Linux ARM' ;;
+    en:stage3_clone_package) text='could not clone %s' ;;
+    es:stage3_clone_package) text='no pude clonar %s' ;;
+    en:stage3_makepkg_failed) text='makepkg failed for %s' ;;
+    es:stage3_makepkg_failed) text='makepkg fallo para %s' ;;
+    en:stage3_ok) text='ok' ;;
+    es:stage3_ok) text='ok' ;;
+    en:stage3_none) text='none' ;;
+    es:stage3_none) text='ninguno' ;;
+    en:stage3_failed) text='failed' ;;
+    es:stage3_failed) text='fallo' ;;
+    en:stage3_terminal_missing) text='xdg-terminal-exec is missing; installing a wrapper' ;;
+    es:stage3_terminal_missing) text='xdg-terminal-exec ausente: instalando un envoltorio' ;;
+    en:stage3_integrate) text='integrating Omarchy into system paths' ;;
+    es:stage3_integrate) text='integrando Omarchy en las rutas de sistema' ;;
+    en:stage3_binaries) text='%s binaries linked in /usr/bin' ;;
+    es:stage3_binaries) text='%s binarios en /usr/bin' ;;
+    en:stage3_units) text='%s user units installed' ;;
+    es:stage3_units) text='%s unidades de usuario instaladas' ;;
+    en:stage3_sddm) text='SDDM: Omarchy theme and session' ;;
+    es:stage3_sddm) text='SDDM: tema Omarchy y sesion' ;;
+    en:stage3_theme) text='applying Tokyo Night theme' ;;
+    es:stage3_theme) text='aplicando el tema Tokyo Night' ;;
+    en:stage3_theme_failed) text='omarchy-theme-set failed' ;;
+    es:stage3_theme_failed) text='omarchy-theme-set fallo' ;;
+    en:stage3_vm_tuning) text='virtual-machine settings' ;;
+    es:stage3_vm_tuning) text='ajustes para maquina virtual' ;;
+    en:stage3_migrations) text='migrations sealed: %s' ;;
+    es:stage3_migrations) text='migraciones selladas: %s' ;;
+    en:stage3_tools_disabled) text='tool compilation disabled; ARM-only tools will be missing' ;;
+    es:stage3_tools_disabled) text='compilacion de herramientas desactivada: faltaran herramientas ARM' ;;
+    en:stage3_tools_build) text='building missing Omarchy tools for aarch64' ;;
+    es:stage3_tools_build) text='compilando las herramientas de Omarchy ausentes en aarch64' ;;
+    en:stage3_built) text='built' ;;
+    es:stage3_built) text='compiladas' ;;
+    en:stage3_not_built) text='not built: %s' ;;
+    es:stage3_not_built) text='no compilaron: %s' ;;
+    en:stage3_kernel_wrapper) text='omarchy-update-restart wrapper' ;;
+    es:stage3_kernel_wrapper) text='envoltorio de omarchy-update-restart' ;;
+    en:stage3_ttfx_build) text='building ttfx from source' ;;
+    es:stage3_ttfx_build) text='compilando ttfx desde fuente' ;;
+    en:stage3_ttfx_failed) text='ttfx build failed; the screensaver will show the logo without effects' ;;
+    es:stage3_ttfx_failed) text='ttfx no compilo; el salvapantallas mostrara el logo sin efectos' ;;
+    en:stage3_optional_installer) text='optional-app installer' ;;
+    es:stage3_optional_installer) text='instalador de apps opcionales' ;;
+    en:stage3_available_menu) text='available as a command and in the application menu' ;;
+    es:stage3_available_menu) text='disponible como comando y en el menu de aplicaciones' ;;
+    en:stage3_clipboard_agent) text='native Wayland clipboard agent' ;;
+    es:stage3_clipboard_agent) text='agente de portapapeles nativo para Wayland' ;;
+    en:stage3_vdagent_ready) text='vdagent service installed' ;;
+    es:stage3_vdagent_ready) text='servicio vdagent instalado' ;;
+    en:stage3_clipboard_fallback) text='shared-folder clipboard fallback installed' ;;
+    es:stage3_clipboard_fallback) text='alternativa de portapapeles por carpeta compartida instalada' ;;
+    en:stage3_free_apps) text='OBS Studio and Pinta (free software, included in the image)' ;;
+    es:stage3_free_apps) text='OBS Studio y Pinta (software libre, van dentro de la imagen)' ;;
+    en:stage3_free_apps_failed) text='OBS or Pinta could not be installed' ;;
+    es:stage3_free_apps_failed) text='OBS o Pinta no se instalaron' ;;
+    en:stage3_free_apps_skipped) text='OBS and Pinta skipped (HACER_LIBRES=no)' ;;
+    es:stage3_free_apps_skipped) text='OBS y Pinta omitidos (HACER_LIBRES=no)' ;;
+    en:stage3_updates) text='updates: snapper + post-update hook' ;;
+    es:stage3_updates) text='actualizaciones: snapper + hook post-update' ;;
+    en:stage3_snapper_missing) text='snapper unavailable' ;;
+    es:stage3_snapper_missing) text='snapper no disponible' ;;
+    en:stage3_snapper_ready) text='snapper configured' ;;
+    es:stage3_snapper_ready) text='snapper configurado' ;;
+    en:stage3_snapper_failed) text='snapper configuration failed' ;;
+    es:stage3_snapper_failed) text='no se pudo configurar snapper' ;;
+    en:stage3_hook_ready) text='post-update hook installed' ;;
+    es:stage3_hook_ready) text='hook post-update instalado' ;;
+    en:stage3_summary) text='summary' ;;
+    es:stage3_summary) text='resumen' ;;
+    en:stage3_unlinked) text='not linked' ;;
+    es:stage3_unlinked) text='sin enlazar' ;;
+    en:stage3_completed) text='COMPLETED' ;;
+    es:stage3_completed) text='COMPLETADO' ;;
+    en:repair_kernel_modules) text='kernel modules' ;;
+    es:repair_kernel_modules) text='modulos del kernel' ;;
+    en:repair_btrfs_missing) text='live kernel does not support btrfs' ;;
+    es:repair_btrfs_missing) text='el kernel del live no soporta btrfs' ;;
+    en:repair_filesystems) text='filesystems' ;;
+    es:repair_filesystems) text='filesystems' ;;
+    en:repair_network) text='network (best effort, for convenience)' ;;
+    es:repair_network) text='red (best-effort, solo por comodidad)' ;;
+    en:repair_no_network) text='no network; continuing anyway' ;;
+    es:repair_no_network) text='sin red; se continua igualmente' ;;
+    en:repair_mount) text='mounting installed system' ;;
+    es:repair_mount) text='montando el sistema instalado' ;;
+    en:repair_run_fix) text='running %s inside chroot' ;;
+    es:repair_run_fix) text='ejecutando %s dentro del chroot' ;;
+    en:repair_remove_payload) text='removing /root/prov from installed system' ;;
+    es:repair_remove_payload) text='retirando /root/prov del sistema instalado' ;;
+    en:repair_unmount) text='unmounting' ;;
+    es:repair_unmount) text='desmontando' ;;
+    en:sanitize_source_user_missing) text='no source user is configured' ;;
+    es:sanitize_source_user_missing) text='no se de que usuario partir' ;;
+    en:sanitize_user_missing) text='user %s does not exist' ;;
+    es:sanitize_user_missing) text='el usuario %s no existe' ;;
+    en:sanitize_step1) text='1/10 detaching /usr/share/omarchy from the old home' ;;
+    es:sanitize_step1) text='1/10 desanclando /usr/share/omarchy del home del usuario' ;;
+    en:sanitize_step2) text='2/10 renaming user %s -> %s' ;;
+    es:sanitize_step2) text='2/10 renombrando el usuario %s -> %s' ;;
+    en:sanitize_step3) text='3/10 SDDM: autologin to generic user' ;;
+    es:sanitize_step3) text='3/10 SDDM: autologin al usuario generico' ;;
+    en:sanitize_step4) text='4/10 credentials and keys' ;;
+    es:sanitize_step4) text='4/10 credenciales y claves' ;;
+    en:sanitize_step5) text='5/10 machine identity' ;;
+    es:sanitize_step5) text='5/10 identidad de la maquina' ;;
+    en:sanitize_step6) text='6/10 personal identity (git, histories, cache)' ;;
+    es:sanitize_step6) text='6/10 identidad personal (git, historiales, cache)' ;;
+    en:sanitize_step7b) text='7b/10 proprietary apps outside the distribution image' ;;
+    es:sanitize_step7b) text='7b/10 apps propietarias fuera de la imagen distribuible' ;;
+    en:sanitize_removed) text='removed %s' ;;
+    es:sanitize_removed) text='retirado %s' ;;
+    en:sanitize_spotify_binding_removed) text='removed Spotify shortcut' ;;
+    es:sanitize_spotify_binding_removed) text='retirado el atajo de Spotify' ;;
+    en:sanitize_reinstall_with) text='reinstall with: omarchy-arm-extras' ;;
+    es:sanitize_reinstall_with) text='se reinstalan con: omarchy-arm-extras' ;;
+    en:sanitize_step7c) text='7c/10 slimming: build-only dependencies' ;;
+    es:sanitize_step7c) text='7c/10 adelgazando: lo que solo hacia falta para compilar' ;;
+    en:sanitize_step7d) text='7d/10 slimming: hardware not needed in a VM' ;;
+    es:sanitize_step7d) text='7d/10 adelgazando: lo que no puede hacer falta en una VM' ;;
+    en:sanitize_usage_after_trim) text='space after trimming' ;;
+    es:sanitize_usage_after_trim) text='ocupacion tras el recorte' ;;
+    en:sanitize_step7) text='7/10 system logs and caches' ;;
+    es:sanitize_step7) text='7/10 logs y caches del sistema' ;;
+    en:sanitize_step8) text='8/10 recipient notice' ;;
+    es:sanitize_step8) text='8/10 aviso al destinatario' ;;
+    en:sanitize_step8a) text='8a/10 ARM update hook' ;;
+    es:sanitize_step8a) text='8a/10 hook de actualizacion para ARM' ;;
+    en:sanitize_step8b) text='8b/10 optional-app installer' ;;
+    es:sanitize_step8b) text='8b/10 instalador de apps opcionales' ;;
+    en:sanitize_extras_ready) text='optional app installer installed' ;;
+    es:sanitize_extras_ready) text='instalador de apps opcionales instalado' ;;
+    en:sanitize_extras_missing) text='optional app installer was not included in the ISO' ;;
+    es:sanitize_extras_missing) text='el instalador de apps opcionales no venia en el ISO' ;;
+    en:sanitize_step9) text='9/10 checking that nothing remains tied to %s' ;;
+    es:sanitize_step9) text='9/10 comprobando que nada quedo atado a %s' ;;
+    en:sanitize_step10) text='10/10 freeing unused space for compression' ;;
+    es:sanitize_step10) text='10/10 liberando espacio no usado para comprimir mejor' ;;
+    en:sanitize_backups) text='usermod backup files' ;;
+    es:sanitize_backups) text='ficheros de respaldo de usermod' ;;
+    en:sanitize_subid) text='subuid/subgid' ;;
+    es:sanitize_subid) text='subuid/subgid' ;;
+    en:sanitize_final_scan) text='final scan for references to %s' ;;
+    es:sanitize_final_scan) text='barrido final de referencias a %s' ;;
+    en:sanitize_broken_usr_bin) text='broken symlinks in /usr/bin' ;;
+    es:sanitize_broken_usr_bin) text='enlaces rotos en /usr/bin' ;;
+    en:sanitize_omarchy_path) text='/usr/share/omarchy (must not point into /home)' ;;
+    es:sanitize_omarchy_path) text='/usr/share/omarchy (no debe apuntar a /home)' ;;
+    en:sanitize_consistency) text='system consistency' ;;
+    es:sanitize_consistency) text='coherencia del sistema' ;;
+    en:sanitize_bookmarks) text='Nautilus/GTK bookmarks pointing to old home' ;;
+    es:sanitize_bookmarks) text='marcadores de Nautilus/GTK apuntando al home antiguo' ;;
+    en:sanitize_real_name) text='real name in passwd (shown in greeter)' ;;
+    es:sanitize_real_name) text='nombre real en passwd (aparece en el greeter)' ;;
+    en:sanitize_user_dirs) text='user-dirs with absolute paths' ;;
+    es:sanitize_user_dirs) text='user-dirs con rutas absolutas' ;;
+    en:sanitize_symlinks) text='symlinks pointing to old home' ;;
+    es:sanitize_symlinks) text='symlinks que apuntan al home antiguo' ;;
+    en:sanitize_final_check) text='final check' ;;
+    es:sanitize_final_check) text='comprobacion final' ;;
+    en:sanitize_links_old) text='links to /home/%s' ;;
+    es:sanitize_links_old) text='enlaces a /home/%s' ;;
+    en:sanitize_broken_home) text='broken symlinks in home' ;;
+    es:sanitize_broken_home) text='enlaces rotos en el home' ;;
+    en:sanitize_ttfx_note) text='ttfx contains a build path in debug information; harmless' ;;
+    es:sanitize_ttfx_note) text='ttfx contiene la ruta de compilacion en su informacion de depuracion; inocuo' ;;
+    en:sanitize_distribution_state) text='final state for distribution' ;;
+    es:sanitize_distribution_state) text='estado final para distribuir' ;;
+    en:sanitize_user_label) text='user' ;;
+    es:sanitize_user_label) text='usuario' ;;
+    en:sanitize_do_not_boot_1) text='WARNING: do not boot this image again after sanitizing.' ;;
+    es:sanitize_do_not_boot_1) text='AVISO: no arranques esta imagen otra vez despues de sanitizar.' ;;
+    en:sanitize_do_not_boot_2) text='The first boot regenerates machine identity and logs.' ;;
+    es:sanitize_do_not_boot_2) text='El primer arranque regenera la identidad y los logs.' ;;
+    en:sanitize_do_not_boot_3) text='Repeat sanitize after any verification boot.' ;;
+    es:sanitize_do_not_boot_3) text='Repite sanitize despues de cualquier arranque de verificacion.' ;;
+    en:sanitize_do_not_boot_4) text='SSH host keys will be regenerated on first boot.' ;;
+    es:sanitize_do_not_boot_4) text='Las claves SSH se regeneraran en el primer arranque.' ;;
+    en:extras_help_title) text='omarchy-arm-extras — install ARM64 apps from official sources' ;;
+    es:extras_help_title) text='omarchy-arm-extras — instala apps ARM64 desde fuentes oficiales' ;;
+    en:extras_help_menu) text='interactive menu' ;;
+    es:extras_help_menu) text='menu interactivo' ;;
+    en:extras_help_list) text='list available apps' ;;
+    es:extras_help_list) text='ver que puede instalar' ;;
+    en:extras_help_specific) text='install selected items' ;;
+    es:extras_help_specific) text='instalar elementos concretos' ;;
+    en:extras_help_all) text='install everything missing' ;;
+    es:extras_help_all) text='todo lo que falte' ;;
+    en:extras_help_force) text='reinstall even if already installed' ;;
+    es:extras_help_force) text='reinstalar aunque ya este' ;;
+    en:extras_need_sudo) text='sudo is required to install packages.' ;;
+    es:extras_need_sudo) text='Se necesita sudo para instalar paquetes.' ;;
+    en:extras_no_privileges) text='no privileges' ;;
+    es:extras_no_privileges) text='sin privilegios' ;;
+    en:extras_already_installed) text='%s already installed' ;;
+    es:extras_already_installed) text='%s ya instalado' ;;
+    en:extras_clone_failed) text='could not clone %s (base: %s)' ;;
+    es:extras_clone_failed) text='no se pudo clonar %s (base: %s)' ;;
+    en:extras_import_key) text='importing GPG key %s' ;;
+    es:extras_import_key) text='importando clave GPG %s' ;;
+    en:extras_key_failed) text='could not import %s; signature verification may fail' ;;
+    es:extras_key_failed) text='no pude importar %s: la verificacion de firma fallara' ;;
+    en:extras_arch_patched) text='arch= patched to include aarch64' ;;
+    es:extras_arch_patched) text='arch= parcheado para incluir aarch64' ;;
+    en:extras_build_failed) text='build failed for %s — log: %s' ;;
+    es:extras_build_failed) text='fallo la compilacion de %s — log: %s' ;;
+    en:armsync_linked_path) text='armsync linked path' ;;
+    es:armsync_linked_path) text='armsync linked path' ;;
+    en:extras_1password_info) text='extras 1password info' ;;
+    es:extras_1password_info) text='extras 1password info' ;;
+    en:extras_already_in_image) text='extras already in image' ;;
+    es:extras_already_in_image) text='extras already in image' ;;
+    en:extras_arch_clone_failed) text='extras arch clone failed' ;;
+    es:extras_arch_clone_failed) text='extras arch clone failed' ;;
+    en:extras_archive_invalid) text='extras archive invalid' ;;
+    es:extras_archive_invalid) text='extras archive invalid' ;;
+    en:extras_build_failed_generic) text='extras build failed generic' ;;
+    es:extras_build_failed_generic) text='extras build failed generic' ;;
+    en:extras_choose_header) text='extras choose header' ;;
+    es:extras_choose_header) text='extras choose header' ;;
+    en:extras_chrome_info) text='extras chrome info' ;;
+    es:extras_chrome_info) text='extras chrome info' ;;
+    en:extras_chromium_info) text='extras chromium info' ;;
+    es:extras_chromium_info) text='extras chromium info' ;;
+    en:extras_download_failed) text='extras download failed' ;;
+    es:extras_download_failed) text='extras download failed' ;;
+    en:extras_extract_failed) text='extras extract failed' ;;
+    es:extras_extract_failed) text='extras extract failed' ;;
+    en:extras_failed_list) text='extras failed list' ;;
+    es:extras_failed_list) text='extras failed list' ;;
+    en:extras_installed) text='extras installed' ;;
+    es:extras_installed) text='extras installed' ;;
+    en:extras_installed_list) text='extras installed list' ;;
+    es:extras_installed_list) text='extras installed list' ;;
+    en:extras_installed_marker) text='extras installed marker' ;;
+    es:extras_installed_marker) text='extras installed marker' ;;
+    en:extras_launcher_ok) text='extras launcher ok' ;;
+    es:extras_launcher_ok) text='extras launcher ok' ;;
+    en:extras_list_explanation_1) text='extras list explanation 1' ;;
+    es:extras_list_explanation_1) text='extras list explanation 1' ;;
+    en:extras_list_explanation_2) text='extras list explanation 2' ;;
+    es:extras_list_explanation_2) text='extras list explanation 2' ;;
+    en:extras_list_explanation_3) text='extras list explanation 3' ;;
+    es:extras_list_explanation_3) text='extras list explanation 3' ;;
+    en:extras_list_title) text='extras list title' ;;
+    es:extras_list_title) text='extras list title' ;;
+    en:extras_logs) text='extras logs' ;;
+    es:extras_logs) text='extras logs' ;;
+    en:extras_manual_updates) text='extras manual updates' ;;
+    es:extras_manual_updates) text='extras manual updates' ;;
+    en:extras_no_hw_accel) text='extras no hw accel' ;;
+    es:extras_no_hw_accel) text='extras no hw accel' ;;
+    en:extras_not_in_path) text='extras not in path' ;;
+    es:extras_not_in_path) text='extras not in path' ;;
+    en:extras_nothing_selected) text='extras nothing selected' ;;
+    es:extras_nothing_selected) text='extras nothing selected' ;;
+    en:extras_obs_browser_info) text='extras obs browser info' ;;
+    es:extras_obs_browser_info) text='extras obs browser info' ;;
+    en:extras_obs_info) text='extras obs info' ;;
+    es:extras_obs_info) text='extras obs info' ;;
+    en:extras_obs_slow) text='extras obs slow' ;;
+    es:extras_obs_slow) text='extras obs slow' ;;
+    en:extras_obsidian_info) text='extras obsidian info' ;;
+    es:extras_obsidian_info) text='extras obsidian info' ;;
+    en:extras_obsidian_missing) text='extras obsidian missing' ;;
+    es:extras_obsidian_missing) text='extras obsidian missing' ;;
+    en:extras_obsidian_ok) text='extras obsidian ok' ;;
+    es:extras_obsidian_ok) text='extras obsidian ok' ;;
+    en:extras_pacman_failed) text='extras pacman failed' ;;
+    es:extras_pacman_failed) text='extras pacman failed' ;;
+    en:extras_path_arch_any) text='extras path arch any' ;;
+    es:extras_path_arch_any) text='extras path arch any' ;;
+    en:extras_pinta_info) text='extras pinta info' ;;
+    es:extras_pinta_info) text='extras pinta info' ;;
+    en:extras_pinta_install_info) text='extras pinta install info' ;;
+    es:extras_pinta_install_info) text='extras pinta install info' ;;
+    en:extras_pinta_missing) text='extras pinta missing' ;;
+    es:extras_pinta_missing) text='extras pinta missing' ;;
+    en:extras_pinta_runtime_missing) text='extras pinta runtime missing' ;;
+    es:extras_pinta_runtime_missing) text='extras pinta runtime missing' ;;
+    en:extras_postinstall_warning) text='extras postinstall warning' ;;
+    es:extras_postinstall_warning) text='extras postinstall warning' ;;
+    en:extras_signature_bad) text='extras signature bad' ;;
+    es:extras_signature_bad) text='extras signature bad' ;;
+    en:extras_signature_missing) text='extras signature missing' ;;
+    es:extras_signature_missing) text='extras signature missing' ;;
+    en:extras_signature_ok) text='extras signature ok' ;;
+    es:extras_signature_ok) text='extras signature ok' ;;
+    en:extras_spotify_binding_ok) text='extras spotify binding ok' ;;
+    es:extras_spotify_binding_ok) text='extras spotify binding ok' ;;
+    en:extras_spotify_chrome_required) text='extras spotify chrome required' ;;
+    es:extras_spotify_chrome_required) text='extras spotify chrome required' ;;
+    en:extras_spotify_terminal) text='extras spotify terminal' ;;
+    es:extras_spotify_terminal) text='extras spotify terminal' ;;
+    en:extras_summary) text='extras summary' ;;
+    es:extras_summary) text='extras summary' ;;
+    en:extras_typora_info) text='extras typora info' ;;
+    es:extras_typora_info) text='extras typora info' ;;
+    en:extras_unknown_key) text='extras unknown key' ;;
+    es:extras_unknown_key) text='extras unknown key' ;;
+    en:extras_usage) text='extras usage' ;;
+    es:extras_usage) text='extras usage' ;;
+    en:extras_wayland_hint) text='extras wayland hint' ;;
+    es:extras_wayland_hint) text='extras wayland hint' ;;
+    en:extras_webapp_missing) text='extras webapp missing' ;;
+    es:extras_webapp_missing) text='extras webapp missing' ;;
+    en:extras_widevine_hint) text='extras widevine hint' ;;
+    es:extras_widevine_hint) text='extras widevine hint' ;;
+    en:paths_check) text='paths check' ;;
+    es:paths_check) text='paths check' ;;
+    en:paths_linked) text='paths linked' ;;
+    es:paths_linked) text='paths linked' ;;
+    en:paths_missing) text='paths missing' ;;
+    es:paths_missing) text='paths missing' ;;
+    en:paths_step1) text='paths step1' ;;
+    es:paths_step1) text='paths step1' ;;
+    en:paths_step2) text='paths step2' ;;
+    es:paths_step2) text='paths step2' ;;
+    en:paths_step3) text='paths step3' ;;
+    es:paths_step3) text='paths step3' ;;
+    en:paths_step4) text='paths step4' ;;
+    es:paths_step4) text='paths step4' ;;
+    en:paths_step5) text='paths step5' ;;
+    es:paths_step5) text='paths step5' ;;
+    en:paths_step6) text='paths step6' ;;
+    es:paths_step6) text='paths step6' ;;
+    en:paths_step7) text='paths step7' ;;
+    es:paths_step7) text='paths step7' ;;
+    en:paths_step8) text='paths step8' ;;
+    es:paths_step8) text='paths step8' ;;
+    en:paths_theme_failed) text='paths theme failed' ;;
+    es:paths_theme_failed) text='paths theme failed' ;;
+    en:sanitize_active_background) text='sanitize active background' ;;
+    es:sanitize_active_background) text='sanitize active background' ;;
+    en:sanitize_all_ok) text='sanitize all ok' ;;
+    es:sanitize_all_ok) text='sanitize all ok' ;;
+    en:sanitize_background_resolves) text='sanitize background resolves' ;;
+    es:sanitize_background_resolves) text='sanitize background resolves' ;;
+    en:sanitize_binaries) text='sanitize binaries' ;;
+    es:sanitize_binaries) text='sanitize binaries' ;;
+    en:sanitize_broken) text='sanitize broken' ;;
+    es:sanitize_broken) text='sanitize broken' ;;
+    en:sanitize_broken_link_removed) text='sanitize broken link removed' ;;
+    es:sanitize_broken_link_removed) text='sanitize broken link removed' ;;
+    en:sanitize_broken_links) text='sanitize broken links' ;;
+    es:sanitize_broken_links) text='sanitize broken links' ;;
+    en:sanitize_do_not_boot_1) text='sanitize do not boot 1' ;;
+    es:sanitize_do_not_boot_1) text='sanitize do not boot 1' ;;
+    en:sanitize_do_not_boot_2) text='sanitize do not boot 2' ;;
+    es:sanitize_do_not_boot_2) text='sanitize do not boot 2' ;;
+    en:sanitize_do_not_boot_3) text='sanitize do not boot 3' ;;
+    es:sanitize_do_not_boot_3) text='sanitize do not boot 3' ;;
+    en:sanitize_do_not_boot_4) text='sanitize do not boot 4' ;;
+    es:sanitize_do_not_boot_4) text='sanitize do not boot 4' ;;
+    en:sanitize_home) text='sanitize home' ;;
+    es:sanitize_home) text='sanitize home' ;;
+    en:sanitize_home_label) text='sanitize home label' ;;
+    es:sanitize_home_label) text='sanitize home label' ;;
+    en:sanitize_host_keys) text='sanitize host keys' ;;
+    es:sanitize_host_keys) text='sanitize host keys' ;;
+    en:sanitize_in_usr_bin) text='sanitize in usr bin' ;;
+    es:sanitize_in_usr_bin) text='sanitize in usr bin' ;;
+    en:sanitize_loose_files) text='sanitize loose files' ;;
+    es:sanitize_loose_files) text='sanitize loose files' ;;
+    en:sanitize_matches) text='sanitize matches' ;;
+    es:sanitize_matches) text='sanitize matches' ;;
+    en:sanitize_menu_entry) text='sanitize menu entry' ;;
+    es:sanitize_menu_entry) text='sanitize menu entry' ;;
+    en:sanitize_missing) text='sanitize missing' ;;
+    es:sanitize_missing) text='sanitize missing' ;;
+    en:sanitize_missing_pkg) text='sanitize missing pkg' ;;
+    es:sanitize_missing_pkg) text='sanitize missing pkg' ;;
+    en:sanitize_no) text='sanitize no' ;;
+    es:sanitize_no) text='sanitize no' ;;
+    en:sanitize_none) text='sanitize none' ;;
+    es:sanitize_none) text='sanitize none' ;;
+    en:sanitize_none_upper) text='sanitize none upper' ;;
+    es:sanitize_none_upper) text='sanitize none upper' ;;
+    en:sanitize_ok) text='sanitize ok' ;;
+    es:sanitize_ok) text='sanitize ok' ;;
+    en:sanitize_old_home_links) text='sanitize old home links' ;;
+    es:sanitize_old_home_links) text='sanitize old home links' ;;
+    en:sanitize_optional_installer) text='sanitize optional installer' ;;
+    es:sanitize_optional_installer) text='sanitize optional installer' ;;
+    en:sanitize_passwd) text='sanitize passwd' ;;
+    es:sanitize_passwd) text='sanitize passwd' ;;
+    en:sanitize_refs_etc) text='sanitize refs etc' ;;
+    es:sanitize_refs_etc) text='sanitize refs etc' ;;
+    en:sanitize_regenerated) text='sanitize regenerated' ;;
+    es:sanitize_regenerated) text='sanitize regenerated' ;;
+    en:sanitize_remove_failed) text='sanitize remove failed' ;;
+    es:sanitize_remove_failed) text='sanitize remove failed' ;;
+    en:sanitize_removed_path) text='sanitize removed path' ;;
+    es:sanitize_removed_path) text='sanitize removed path' ;;
+    en:sanitize_required) text='sanitize required' ;;
+    es:sanitize_required) text='sanitize required' ;;
+    en:sanitize_step1) text='sanitize step1' ;;
+    es:sanitize_step1) text='sanitize step1' ;;
+    en:sanitize_step10) text='sanitize step10' ;;
+    es:sanitize_step10) text='sanitize step10' ;;
+    en:sanitize_step2) text='sanitize step2' ;;
+    es:sanitize_step2) text='sanitize step2' ;;
+    en:sanitize_step3) text='sanitize step3' ;;
+    es:sanitize_step3) text='sanitize step3' ;;
+    en:sanitize_step4) text='sanitize step4' ;;
+    es:sanitize_step4) text='sanitize step4' ;;
+    en:sanitize_step5) text='sanitize step5' ;;
+    es:sanitize_step5) text='sanitize step5' ;;
+    en:sanitize_step6) text='sanitize step6' ;;
+    es:sanitize_step6) text='sanitize step6' ;;
+    en:sanitize_step7) text='sanitize step7' ;;
+    es:sanitize_step7) text='sanitize step7' ;;
+    en:sanitize_step7b) text='sanitize step7b' ;;
+    es:sanitize_step7b) text='sanitize step7b' ;;
+    en:sanitize_step7c) text='sanitize step7c' ;;
+    es:sanitize_step7c) text='sanitize step7c' ;;
+    en:sanitize_step7d) text='sanitize step7d' ;;
+    es:sanitize_step7d) text='sanitize step7d' ;;
+    en:sanitize_step8) text='sanitize step8' ;;
+    es:sanitize_step8) text='sanitize step8' ;;
+    en:sanitize_step8a) text='sanitize step8a' ;;
+    es:sanitize_step8a) text='sanitize step8a' ;;
+    en:sanitize_step8b) text='sanitize step8b' ;;
+    es:sanitize_step8b) text='sanitize step8b' ;;
+    en:sanitize_step9) text='sanitize step9' ;;
+    es:sanitize_step9) text='sanitize step9' ;;
+    en:sanitize_symlink) text='sanitize symlink' ;;
+    es:sanitize_symlink) text='sanitize symlink' ;;
+    en:sanitize_ttfx_note1) text='sanitize ttfx note1' ;;
+    es:sanitize_ttfx_note1) text='sanitize ttfx note1' ;;
+    en:sanitize_ttfx_note2) text='sanitize ttfx note2' ;;
+    es:sanitize_ttfx_note2) text='sanitize ttfx note2' ;;
+    en:sanitize_user) text='sanitize user' ;;
+    es:sanitize_user) text='sanitize user' ;;
+    en:sanitize_yes) text='sanitize yes' ;;
+    es:sanitize_yes) text='sanitize yes' ;;
+    en:sshd_check) text='sshd check' ;;
+    es:sshd_check) text='sshd check' ;;
+    en:sshd_cleanup) text='sshd cleanup' ;;
+    es:sshd_cleanup) text='sshd cleanup' ;;
+    en:sshd_disable) text='sshd disable' ;;
+    es:sshd_disable) text='sshd disable' ;;
+    en:sshd_host_key) text='sshd host key' ;;
+    es:sshd_host_key) text='sshd host key' ;;
+    en:sshd_sudoers) text='sshd sudoers' ;;
+    es:sshd_sudoers) text='sshd sudoers' ;;
+    en:sshd_sudoers_valid) text='sshd sudoers valid' ;;
+    es:sshd_sudoers_valid) text='sshd sudoers valid' ;;
+    en:stage1_btrfs_fallback) text='stage1 btrfs fallback' ;;
+    es:stage1_btrfs_fallback) text='stage1 btrfs fallback' ;;
+    en:stage1_chroot) text='stage1 chroot' ;;
+    es:stage1_chroot) text='stage1 chroot' ;;
+    en:stage1_contents) text='stage1 contents' ;;
+    es:stage1_contents) text='stage1 contents' ;;
+    en:stage1_copy_payload) text='stage1 copy payload' ;;
+    es:stage1_copy_payload) text='stage1 copy payload' ;;
+    en:stage1_deploy_rootfs) text='stage1 deploy rootfs' ;;
+    es:stage1_deploy_rootfs) text='stage1 deploy rootfs' ;;
+    en:stage1_dns) text='stage1 dns' ;;
+    es:stage1_dns) text='stage1 dns' ;;
+    en:stage1_filesystems) text='stage1 filesystems' ;;
+    es:stage1_filesystems) text='stage1 filesystems' ;;
+    en:stage1_finished) text='stage1 finished' ;;
+    es:stage1_finished) text='stage1 finished' ;;
+    en:stage1_fs_modules) text='stage1 fs modules' ;;
+    es:stage1_fs_modules) text='stage1 fs modules' ;;
+    en:stage1_mount_esp) text='stage1 mount esp' ;;
+    es:stage1_mount_esp) text='stage1 mount esp' ;;
+    en:stage1_mounts) text='stage1 mounts' ;;
+    es:stage1_mounts) text='stage1 mounts' ;;
+    en:stage1_network) text='stage1 network' ;;
+    es:stage1_network) text='stage1 network' ;;
+    en:stage1_no_ipv4) text='stage1 no ipv4' ;;
+    es:stage1_no_ipv4) text='stage1 no ipv4' ;;
+    en:stage1_ok) text='stage1 ok' ;;
+    es:stage1_ok) text='stage1 ok' ;;
+    en:stage1_partition) text='stage1 partition' ;;
+    es:stage1_partition) text='stage1 partition' ;;
+    en:stage1_root) text='stage1 root' ;;
+    es:stage1_root) text='stage1 root' ;;
+    en:stage1_rootfs_incomplete) text='stage1 rootfs incomplete' ;;
+    es:stage1_rootfs_incomplete) text='stage1 rootfs incomplete' ;;
+    en:stage1_subvolumes) text='stage1 subvolumes' ;;
+    es:stage1_subvolumes) text='stage1 subvolumes' ;;
+    en:stage1_tools) text='stage1 tools' ;;
+    es:stage1_tools) text='stage1 tools' ;;
+    en:stage1_unmount) text='stage1 unmount' ;;
+    es:stage1_unmount) text='stage1 unmount' ;;
+    en:stage1_vfat_missing) text='stage1 vfat missing' ;;
+    es:stage1_vfat_missing) text='stage1 vfat missing' ;;
+    en:stage2_base) text='stage2 base' ;;
+    es:stage2_base) text='stage2 base' ;;
+    en:stage2_batch_failed) text='stage2 batch failed' ;;
+    es:stage2_batch_failed) text='stage2 batch failed' ;;
+    en:stage2_boot_empty) text='stage2 boot empty' ;;
+    es:stage2_boot_empty) text='stage2 boot empty' ;;
+    en:stage2_cleanup) text='stage2 cleanup' ;;
+    es:stage2_cleanup) text='stage2 cleanup' ;;
+    en:stage2_completed) text='stage2 completed' ;;
+    es:stage2_completed) text='stage2 completed' ;;
+    en:stage2_core) text='stage2 core' ;;
+    es:stage2_core) text='stage2 core' ;;
+    en:stage2_desktop) text='stage2 desktop' ;;
+    es:stage2_desktop) text='stage2 desktop' ;;
+    en:stage2_extras) text='stage2 extras' ;;
+    es:stage2_extras) text='stage2 extras' ;;
+    en:stage2_fstab) text='stage2 fstab' ;;
+    es:stage2_fstab) text='stage2 fstab' ;;
+    en:stage2_initramfs) text='stage2 initramfs' ;;
+    es:stage2_initramfs) text='stage2 initramfs' ;;
+    en:stage2_initramfs_failed) text='stage2 initramfs failed' ;;
+    es:stage2_initramfs_failed) text='stage2 initramfs failed' ;;
+    en:stage2_initramfs_missing) text='stage2 initramfs missing' ;;
+    es:stage2_initramfs_missing) text='stage2 initramfs missing' ;;
+    en:stage2_kernel_missing) text='stage2 kernel missing' ;;
+    es:stage2_kernel_missing) text='stage2 kernel missing' ;;
+    en:stage2_kernel_reinstall_failed) text='stage2 kernel reinstall failed' ;;
+    es:stage2_kernel_reinstall_failed) text='stage2 kernel reinstall failed' ;;
+    en:stage2_keyring) text='stage2 keyring' ;;
+    es:stage2_keyring) text='stage2 keyring' ;;
+    en:stage2_line_failed) text='stage2 line failed' ;;
+    es:stage2_line_failed) text='stage2 line failed' ;;
+    en:stage2_locale) text='stage2 locale' ;;
+    es:stage2_locale) text='stage2 locale' ;;
+    en:stage2_missing) text='stage2 missing' ;;
+    es:stage2_missing) text='stage2 missing' ;;
+    en:stage2_network) text='stage2 network' ;;
+    es:stage2_network) text='stage2 network' ;;
+    en:stage2_not_installed) text='stage2 not installed' ;;
+    es:stage2_not_installed) text='stage2 not installed' ;;
+    en:stage2_packages) text='stage2 packages' ;;
+    es:stage2_packages) text='stage2 packages' ;;
+    en:stage2_packages_failed) text='stage2 packages failed' ;;
+    es:stage2_packages_failed) text='stage2 packages failed' ;;
+    en:stage2_sddm_missing) text='stage2 sddm missing' ;;
+    es:stage2_sddm_missing) text='stage2 sddm missing' ;;
+    en:stage2_sddm_session) text='stage2 sddm session' ;;
+    es:stage2_sddm_session) text='stage2 sddm session' ;;
+    en:stage2_services) text='stage2 services' ;;
+    es:stage2_services) text='stage2 services' ;;
+    en:stage2_session) text='stage2 session' ;;
+    es:stage2_session) text='stage2 session' ;;
+    en:stage2_share_ready) text='stage2 share ready' ;;
+    es:stage2_share_ready) text='stage2 share ready' ;;
+    en:stage2_stage3) text='stage2 stage3' ;;
+    es:stage2_stage3) text='stage2 stage3' ;;
+    en:stage2_stage3_available) text='stage2 stage3 available' ;;
+    es:stage2_stage3_available) text='stage2 stage3 available' ;;
+    en:stage2_stage3_failed) text='stage2 stage3 failed' ;;
+    es:stage2_stage3_failed) text='stage2 stage3 failed' ;;
+    en:stage2_summary) text='stage2 summary' ;;
+    es:stage2_summary) text='stage2 summary' ;;
+    en:stage2_udev_rule) text='stage2 udev rule' ;;
+    es:stage2_udev_rule) text='stage2 udev rule' ;;
+    en:stage2_update) text='stage2 update' ;;
+    es:stage2_update) text='stage2 update' ;;
+    en:stage2_user) text='stage2 user' ;;
+    es:stage2_user) text='stage2 user' ;;
+    en:stage2_user_label) text='stage2 user label' ;;
+    es:stage2_user_label) text='stage2 user label' ;;
+    en:stage2_verbose) text='stage2 verbose' ;;
+    es:stage2_verbose) text='stage2 verbose' ;;
+    en:stage2_vm_tuning) text='stage2 vm tuning' ;;
+    es:stage2_vm_tuning) text='stage2 vm tuning' ;;
+    en:stage3_aur) text='stage3 aur' ;;
+    es:stage3_aur) text='stage3 aur' ;;
+    en:stage3_available_menu) text='stage3 available menu' ;;
+    es:stage3_available_menu) text='stage3 available menu' ;;
+    en:stage3_binaries) text='stage3 binaries' ;;
+    es:stage3_binaries) text='stage3 binaries' ;;
+    en:stage3_built) text='stage3 built' ;;
+    es:stage3_built) text='stage3 built' ;;
+    en:stage3_clipboard_agent) text='stage3 clipboard agent' ;;
+    es:stage3_clipboard_agent) text='stage3 clipboard agent' ;;
+    en:stage3_clipboard_fallback) text='stage3 clipboard fallback' ;;
+    es:stage3_clipboard_fallback) text='stage3 clipboard fallback' ;;
+    en:stage3_clone) text='stage3 clone' ;;
+    es:stage3_clone) text='stage3 clone' ;;
+    en:stage3_clone_failed) text='stage3 clone failed' ;;
+    es:stage3_clone_failed) text='stage3 clone failed' ;;
+    en:stage3_clone_package) text='stage3 clone package' ;;
+    es:stage3_clone_package) text='stage3 clone package' ;;
+    en:stage3_completed) text='stage3 completed' ;;
+    es:stage3_completed) text='stage3 completed' ;;
+    en:stage3_copy_dotfiles) text='stage3 copy dotfiles' ;;
+    es:stage3_copy_dotfiles) text='stage3 copy dotfiles' ;;
+    en:stage3_entries) text='stage3 entries' ;;
+    es:stage3_entries) text='stage3 entries' ;;
+    en:stage3_failed) text='stage3 failed' ;;
+    es:stage3_failed) text='stage3 failed' ;;
+    en:stage3_free_apps) text='stage3 free apps' ;;
+    es:stage3_free_apps) text='stage3 free apps' ;;
+    en:stage3_free_apps_failed) text='stage3 free apps failed' ;;
+    es:stage3_free_apps_failed) text='stage3 free apps failed' ;;
+    en:stage3_free_apps_skipped) text='stage3 free apps skipped' ;;
+    es:stage3_free_apps_skipped) text='stage3 free apps skipped' ;;
+    en:stage3_hook_ready) text='stage3 hook ready' ;;
+    es:stage3_hook_ready) text='stage3 hook ready' ;;
+    en:stage3_integrate) text='stage3 integrate' ;;
+    es:stage3_integrate) text='stage3 integrate' ;;
+    en:stage3_kernel_wrapper) text='stage3 kernel wrapper' ;;
+    es:stage3_kernel_wrapper) text='stage3 kernel wrapper' ;;
+    en:stage3_makepkg_failed) text='stage3 makepkg failed' ;;
+    es:stage3_makepkg_failed) text='stage3 makepkg failed' ;;
+    en:stage3_migrations) text='stage3 migrations' ;;
+    es:stage3_migrations) text='stage3 migrations' ;;
+    en:stage3_missing) text='stage3 missing' ;;
+    es:stage3_missing) text='stage3 missing' ;;
+    en:stage3_none) text='stage3 none' ;;
+    es:stage3_none) text='stage3 none' ;;
+    en:stage3_not_built) text='stage3 not built' ;;
+    es:stage3_not_built) text='stage3 not built' ;;
+    en:stage3_ok) text='stage3 ok' ;;
+    es:stage3_ok) text='stage3 ok' ;;
+    en:stage3_optional_installer) text='stage3 optional installer' ;;
+    es:stage3_optional_installer) text='stage3 optional installer' ;;
+    en:stage3_sddm) text='stage3 sddm' ;;
+    es:stage3_sddm) text='stage3 sddm' ;;
+    en:stage3_snapper_failed) text='stage3 snapper failed' ;;
+    es:stage3_snapper_failed) text='stage3 snapper failed' ;;
+    en:stage3_snapper_missing) text='stage3 snapper missing' ;;
+    es:stage3_snapper_missing) text='stage3 snapper missing' ;;
+    en:stage3_snapper_ready) text='stage3 snapper ready' ;;
+    es:stage3_snapper_ready) text='stage3 snapper ready' ;;
+    en:stage3_summary) text='stage3 summary' ;;
+    es:stage3_summary) text='stage3 summary' ;;
+    en:stage3_terminal_missing) text='stage3 terminal missing' ;;
+    es:stage3_terminal_missing) text='stage3 terminal missing' ;;
+    en:stage3_theme) text='stage3 theme' ;;
+    es:stage3_theme) text='stage3 theme' ;;
+    en:stage3_theme_failed) text='stage3 theme failed' ;;
+    es:stage3_theme_failed) text='stage3 theme failed' ;;
+    en:stage3_tools_build) text='stage3 tools build' ;;
+    es:stage3_tools_build) text='stage3 tools build' ;;
+    en:stage3_tools_disabled) text='stage3 tools disabled' ;;
+    es:stage3_tools_disabled) text='stage3 tools disabled' ;;
+    en:stage3_ttfx_build) text='stage3 ttfx build' ;;
+    es:stage3_ttfx_build) text='stage3 ttfx build' ;;
+    en:stage3_ttfx_failed) text='stage3 ttfx failed' ;;
+    es:stage3_ttfx_failed) text='stage3 ttfx failed' ;;
+    en:stage3_units) text='stage3 units' ;;
+    es:stage3_units) text='stage3 units' ;;
+    en:stage3_unlinked) text='stage3 unlinked' ;;
+    es:stage3_unlinked) text='stage3 unlinked' ;;
+    en:stage3_updates) text='stage3 updates' ;;
+    es:stage3_updates) text='stage3 updates' ;;
+    en:stage3_vdagent_ready) text='stage3 vdagent ready' ;;
+    es:stage3_vdagent_ready) text='stage3 vdagent ready' ;;
+    en:stage3_vm_tuning) text='stage3 vm tuning' ;;
+    es:stage3_vm_tuning) text='stage3 vm tuning' ;;
+    en:trim_before) text='trim before' ;;
+    es:trim_before) text='trim before' ;;
+    en:trim_build_deps) text='trim build deps' ;;
+    es:trim_build_deps) text='trim build deps' ;;
+    en:trim_check) text='trim check' ;;
+    es:trim_check) text='trim check' ;;
+    en:trim_final) text='trim final' ;;
+    es:trim_final) text='trim final' ;;
+    en:trim_largest) text='trim largest' ;;
+    es:trim_largest) text='trim largest' ;;
+    en:trim_missing) text='trim missing' ;;
+    es:trim_missing) text='trim missing' ;;
+    en:trim_orphans) text='trim orphans' ;;
+    es:trim_orphans) text='trim orphans' ;;
+    en:trim_remove_failed) text='trim remove failed' ;;
+    es:trim_remove_failed) text='trim remove failed' ;;
+    en:trim_removed) text='trim removed' ;;
+    es:trim_removed) text='trim removed' ;;
+   *) text="$key" ;;
+  esac
+  printf "$text" "$@"
+}
+# OMARCHY_LOCALIZATION_CATALOG_END
+
 UTMCTL=/Applications/UTM.app/Contents/MacOS/utmctl
 DOCS="$HOME/Library/Containers/com.utmapp.UTM/Data/Documents"
 PHASES=(deps fetch prepare build utm verify sanitize package)
@@ -87,7 +1285,10 @@ ask() {  # ask <variable> <pregunta> [valor por defecto]
 confirm() {  # confirm <pregunta> <si|no por defecto>
   local q="$1" def="${2:-si}" ans
   if (( ! INTERACTIVO )); then [[ $def == si ]]; return; fi
-  read -r -p "  $q [$([[ $def == si ]] && echo 'S/n' || echo 's/N')]: " ans </dev/tty || ans=""
+  local prompt_yes prompt_no
+  prompt_yes=$(omarchy_msg yesno_yes)
+  prompt_no=$(omarchy_msg yesno_no)
+  read -r -p "  $q [$([[ $def == si ]] && printf '%s' "$prompt_yes" || printf '%s' "$prompt_no")]: " ans </dev/tty || ans=""
   ans="${ans:-$def}"
   # ${var,,} es de bash 4 y macOS trae bash 3.2: ahi es un error de expansion
   # que aborta la funcion entera, y confirm devolvia "si" por accidente.
@@ -123,26 +1324,26 @@ detectar_del_anfitrion() {
 
 # ─────────────────────────────── fase: deps ────────────────────────────────
 ph_deps() {
-  phase "deps · dependencias del anfitrion"
-  [[ $(uname -s) == Darwin ]] || die "esto solo corre en macOS"
-  [[ $(uname -m) == arm64  ]] || die "hace falta Apple Silicon (HVF para aarch64)"
-  command -v brew >/dev/null || die "falta Homebrew: https://brew.sh"
+  phase "$(omarchy_msg phase_deps)"
+  [[ $(uname -s) == Darwin ]] || die "$(omarchy_msg host_macos)"
+  [[ $(uname -m) == arm64  ]] || die "$(omarchy_msg host_arm64)"
+  command -v brew >/dev/null || die "$(omarchy_msg host_homebrew)"
   for f in qemu expect aria2; do
-    brew list --formula "$f" >/dev/null 2>&1 || { info "instalando $f..."; brew install "$f" >/dev/null; }
+    brew list --formula "$f" >/dev/null 2>&1 || { info "$(omarchy_msg host_installing "$f")"; brew install "$f" >/dev/null; }
   done
-  command -v qemu-system-aarch64 >/dev/null || die "falta qemu-system-aarch64"
-  command -v expect >/dev/null || die "falta expect"
+  command -v qemu-system-aarch64 >/dev/null || die "$(omarchy_msg host_qemu)"
+  command -v expect >/dev/null || die "$(omarchy_msg host_expect)"
   # git y python3 vienen de las Command Line Tools, que en un Mac recien
   # estrenado no estan. Se usan en 'prepare' y en la comprobacion de la rama.
   for c in git python3 zip shasum curl hdiutil; do
-    command -v "$c" >/dev/null || die "falta '$c' (¿ejecutaste 'xcode-select --install'?)"
+    command -v "$c" >/dev/null || die "$(omarchy_msg host_clt "$c")"
   done
-  [[ -x $UTMCTL ]] || die "falta UTM: brew install --cask utm"
+  [[ -x $UTMCTL ]] || die "$(omarchy_msg host_utm)"
   # Medido en una construccion real: el disco llega a 9,5 GB, la copia para
   # sanitizar a otros 6,5 y el zip a 4. Con clones de APFS el pico ronda los 30.
   local free; free=$(df -g "$HOME" | tail -1 | awk '{print $4}')
-  (( free > 40 )) || die "hacen falta ~40 GB libres (hay ${free} GB)"
-  ok "qemu $(qemu-system-aarch64 --version | head -1 | awk '{print $4}'), UTM $(defaults read /Applications/UTM.app/Contents/Info.plist CFBundleShortVersionString), ${free} GB libres"
+  (( free > 40 )) || die "$(omarchy_msg host_disk_space "$free")"
+  ok "$(omarchy_msg host_deps_ok "$(qemu-system-aarch64 --version | head -1 | awk '{print $4}')" "$(defaults read /Applications/UTM.app/Contents/Info.plist CFBundleShortVersionString)" "$free")"
 }
 
 # Toda fase puede ejecutarse suelta con --only/--from, asi que los directorios
@@ -151,7 +1352,7 @@ ensure_dirs() { mkdir -p "$W"/{dl,vm,provision,scripts,logs,dist,shots}; }
 
 # ─────────────────────────────── fase: fetch ───────────────────────────────
 ph_fetch() {
-  phase "fetch · imagenes base"
+  phase "$(omarchy_msg phase_fetch)"
   local iso="$W/dl/alpine-virt-aarch64.iso"
   local tgz="$W/dl/alarm-rootfs.tgz"
 
@@ -163,10 +1364,10 @@ ph_fetch() {
     local latest
     latest=$(curl -fsSL --max-time 30 "$base/" 2>/dev/null \
              | grep -oE 'alpine-virt-[0-9.]+-aarch64\.iso' | sort -V | tail -1)
-    [[ -n $latest ]] || { warn "no pude leer el indice de Alpine; uso $ALPINE_ISO"; latest="$ALPINE_ISO"; }
-    info "Alpine $latest (entorno live para el bootstrap)"
+    [[ -n $latest ]] || { warn "$(omarchy_msg fetch_index_failed "$ALPINE_ISO")"; latest="$ALPINE_ISO"; }
+    info "$(omarchy_msg fetch_alpine_info "$latest")"
     aria2c -x8 -s8 -c --file-allocation=none -q -d "$W/dl" -o "$(basename "$iso").parcial" \
-      "$base/$latest" || die "no se pudo descargar Alpine ($base/$latest)"
+      "$base/$latest" || die "$(omarchy_msg fetch_alpine_failed "$base/$latest")"
     # Se verifica contra el sha256 publicado antes de darlo por bueno: una
     # descarga interrumpida deja un fichero no vacio que se reutilizaria siempre.
     local wsha gsha
@@ -174,17 +1375,17 @@ ph_fetch() {
     gsha=$(shasum -a 256 "$W/dl/$(basename "$iso").parcial" | awk '{print $1}')
     if [[ -n $wsha && $wsha != "$gsha" ]]; then
       rm -f "$W/dl/$(basename "$iso").parcial"
-      die "el ISO de Alpine no cuadra con su sha256 publicado"
+      die "$(omarchy_msg fetch_checksum_failed)"
     fi
     mv "$W/dl/$(basename "$iso").parcial" "$iso"
-    [[ -n $wsha ]] && info "sha256 verificado" || warn "sin sha256 publicado: no verificado"
+    [[ -n $wsha ]] && info "$(omarchy_msg fetch_checksum_ok)" || warn "$(omarchy_msg fetch_checksum_missing)"
   fi
-  ok "Alpine $(du -h "$iso" | cut -f1)"
+  ok "$(omarchy_msg fetch_alpine_done "$(du -h "$iso" | cut -f1)")"
 
   if [[ ! -s $tgz ]]; then
-    info "rootfs de Arch Linux ARM (~800 MB)"
+    info "$(omarchy_msg fetch_rootfs_info)"
     aria2c -x8 -s8 -c --file-allocation=none -q -d "$W/dl" -o "$(basename "$tgz")" \
-      "$ALARM_URL" || die "no se pudo descargar el rootfs de ALARM"
+      "$ALARM_URL" || die "$(omarchy_msg fetch_rootfs_failed)"
   fi
   # El tarball se rehace cada pocas semanas: se verifica contra el MD5 publicado
   local want got
@@ -192,21 +1393,21 @@ ph_fetch() {
   got=$(md5 -q "$tgz")
   if [[ -z $want ]]; then
     # Antes se anunciaba "MD5 verificado" aunque el curl del checksum fallara.
-    warn "no pude leer $ALARM_URL.md5: el rootfs queda SIN verificar"
-    ok "rootfs ALARM $(du -h "$tgz" | cut -f1), sin verificar"
+    warn "$(omarchy_msg fetch_md5_missing "$ALARM_URL")"
+    ok "$(omarchy_msg fetch_md5_unverified "$(du -h "$tgz" | cut -f1)")"
   elif [[ $want != "$got" ]]; then
-    warn "MD5 no coincide (esperado $want, obtenido $got); se vuelve a descargar"
+    warn "$(omarchy_msg fetch_md5_mismatch "$want" "$got")"
     rm -f "$tgz"
-    [[ ${FETCH_RETRY:-0} -ge 1 ]] && die "el rootfs de ALARM sigue sin cuadrar tras reintentar"
+    [[ ${FETCH_RETRY:-0} -ge 1 ]] && die "$(omarchy_msg fetch_md5_failed)"
     FETCH_RETRY=1 ph_fetch; return
   else
-    ok "rootfs ALARM $(du -h "$tgz" | cut -f1), MD5 verificado"
+    ok "$(omarchy_msg fetch_md5_ok "$(du -h "$tgz" | cut -f1)")"
   fi
 }
 
 # ────────────────────────────── fase: prepare ──────────────────────────────
 ph_prepare() {
-  phase "prepare · lista de paquetes"
+  phase "$(omarchy_msg phase_prepare)"
   # quattro es una rama de pre-release: cuando la fusionen o la borren, todo lo
   # que sigue falla sin decir por que. Se comprueba antes y se cae a la rama por
   # defecto del repositorio, avisando.
@@ -214,9 +1415,9 @@ ph_prepare() {
     local defref
     defref=$(git ls-remote --symref https://github.com/basecamp/omarchy.git HEAD 2>/dev/null \
              | sed -n 's#^ref: refs/heads/\([^\t ]*\).*#\1#p' | head -1)
-    [[ -n $defref ]] || die "la rama '$OMARCHY_REF' no existe y no pude leer la rama por defecto de Omarchy"
-    warn "la rama '$OMARCHY_REF' ya no existe en Omarchy; se usa '$defref'"
-    warn "revisa que la estructura no haya cambiado: este build asume Omarchy 4"
+    [[ -n $defref ]] || die "$(omarchy_msg prepare_ref_missing "$OMARCHY_REF")"
+    warn "$(omarchy_msg prepare_ref_fallback "$OMARCHY_REF" "$defref")"
+    warn "$(omarchy_msg prepare_ref_warning)"
     OMARCHY_REF="$defref"
   fi
   # La lista se calcula contra la rama VIVA de Omarchy interseccionada con lo que
@@ -225,9 +1426,9 @@ ph_prepare() {
   local base=/tmp/om-base.$$ core=/tmp/alarm-core.$$ extra=/tmp/alarm-extra.$$
   curl -fsSL --max-time 60 \
     "https://raw.githubusercontent.com/basecamp/omarchy/$OMARCHY_REF/install/omarchy-base.packages" \
-    -o "$base" || die "no se pudo leer la lista de paquetes de Omarchy"
-  curl -fsSL --max-time 120 http://mirror.archlinuxarm.org/aarch64/core/core.db   -o "$core"  || die "mirror ALARM no responde"
-  curl -fsSL --max-time 180 http://mirror.archlinuxarm.org/aarch64/extra/extra.db -o "$extra" || die "mirror ALARM no responde"
+    -o "$base" || die "$(omarchy_msg prepare_packages_failed)"
+  curl -fsSL --max-time 120 http://mirror.archlinuxarm.org/aarch64/core/core.db   -o "$core"  || die "$(omarchy_msg prepare_mirror_failed)"
+  curl -fsSL --max-time 180 http://mirror.archlinuxarm.org/aarch64/extra/extra.db -o "$extra" || die "$(omarchy_msg prepare_mirror_failed)"
 
   local d=/tmp/alarmdb.$$; rm -rf "$d"; mkdir -p "$d"; ( cd "$d" && tar -xzf "$core"; tar -xzf "$extra" )
   ls -1 "$d" | sed -E 's/-[^-]+-[^-]+$//' | sort -u > /tmp/alarm-pkgs.$$
@@ -270,8 +1471,8 @@ PYEOF
   rm -rf "$d" "$base" "$core" "$extra" /tmp/alarm-pkgs.$$
   # Sin esto un fallo de escritura pasaria inadvertido y el build moriria mas
   # tarde, lejos de la causa.
-  [ -s "$W/provision/packages-core.txt" ] || die "no se pudieron escribir las listas de paquetes"
-  ok "listas generadas contra la rama '$OMARCHY_REF': $(grep -cvE '^#|^$' "$W/provision/packages-core.txt") en el nucleo, $(grep -cvE '^#|^$' "$W/provision/packages-extra.txt") extras"
+  [ -s "$W/provision/packages-core.txt" ] || die "$(omarchy_msg prepare_lists_failed)"
+  ok "$(omarchy_msg prepare_lists_ok "$OMARCHY_REF" "$(grep -cvE '^#|^$' "$W/provision/packages-core.txt")" "$(grep -cvE '^#|^$' "$W/provision/packages-extra.txt")")"
 }
 
 # ─────────────────────────── payloads (se escriben en $W) ──────────────────
@@ -279,12 +1480,22 @@ write_payloads() {
   # Los ficheros de provision y los arneses expect se materializan aqui para que
   # este script sea autocontenido: un solo fichero reproduce todo el proceso.
 mkdir -p "$W/provision"
+# Materialize the exact embedded catalog alongside every payload. The standalone
+# payloads source this file, so copied scripts retain the selected language.
+declare -f omarchy_msg > "$W/provision/catalog.sh"
+chmod 0644 "$W/provision/catalog.sh"
 cat > "$W/provision/stage1.sh" <<'__PAYLOAD_PROVISION_STAGE1_SH__'
 #!/bin/sh
 # Etapa 1 — se ejecuta en el live de Alpine (busybox ash).
 # Particiona el disco, despliega el rootfs de Arch Linux ARM y entra en chroot.
 set -eu
 PROV=/media/prov
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" "$PROV/catalog.sh" /usr/local/share/omarchy/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
 log()  { echo ""; echo "==> [stage1] $*"; }
 warn() { echo "!!  [stage1] $*"; }
 
@@ -292,12 +1503,12 @@ warn() { echo "!!  [stage1] $*"; }
 # asi que el propio script emite el token.
 trap 'rc=$?; [ "$rc" -ne 0 ] && echo "TOK_BUILD_$rc"' EXIT
 
-log "red"
+log "$(msg stage1_network)"
 ip link set eth0 up 2>/dev/null || true
 udhcpc -i eth0 -q -n -t 15 >/dev/null 2>&1 || true
-ip -4 addr show eth0 | grep -o 'inet [0-9.]*' || echo "  (sin IPv4)"
+ip -4 addr show eth0 | grep -o 'inet [0-9.]*' || echo "  ($(msg stage1_no_ipv4))"
 
-log "repositorios y herramientas de Alpine"
+log "$(msg stage1_tools)"
 V=$(cut -d. -f1,2 < /etc/alpine-release)
 cat > /etc/apk/repositories <<EOF
 https://dl-cdn.alpinelinux.org/alpine/v$V/main
@@ -305,22 +1516,22 @@ https://dl-cdn.alpinelinux.org/alpine/v$V/community
 EOF
 apk update >/dev/null
 apk add --no-cache parted dosfstools btrfs-progs libarchive-tools e2fsprogs >/dev/null
-echo "  ok: $(parted --version | head -1)"
+echo "  $(msg stage1_ok): $(parted --version | head -1)"
 
-log "cargando modulos de sistema de ficheros del kernel del live"
+log "$(msg stage1_fs_modules)"
 for m in btrfs vfat fat nls_cp437 nls_iso8859-1 nls_utf8 crc32c-generic xxhash_generic; do
   modprobe "$m" 2>/dev/null || true
 done
 if grep -qw btrfs /proc/filesystems; then
   ROOTFS=btrfs
 else
-  warn "btrfs no disponible en el kernel del live -> se usara ext4 para la raiz"
+  warn "$(msg stage1_btrfs_fallback)"
   ROOTFS=ext4
 fi
-grep -qw vfat /proc/filesystems || warn "vfat no listado en /proc/filesystems"
-echo "  raiz: $ROOTFS   filesystems: $(tr '\n' ' ' < /proc/filesystems | tr -s ' ')"
+grep -qw vfat /proc/filesystems || warn "$(msg stage1_vfat_missing)"
+echo "  $(msg stage1_root): $ROOTFS   $(msg stage1_filesystems): $(tr '\n' ' ' < /proc/filesystems | tr -s ' ')"
 
-log "particionando $DISK (GPT: ESP 1GiB + raiz $ROOTFS)"
+log "$(msg stage1_partition "$DISK" "$ROOTFS")"
 umount -R /mnt 2>/dev/null || true
 wipefs -a "$DISK" >/dev/null 2>&1 || true
 parted -s "$DISK" mklabel gpt
@@ -339,7 +1550,7 @@ parted -s "$DISK" print
 
 MOPT_ROOT=""
 if [ "$ROOTFS" = btrfs ]; then
-  log "subvolumenes btrfs @ y @home"
+  log "$(msg stage1_subvolumes)"
   mount -t btrfs "${DISK}2" /mnt
   btrfs subvolume create /mnt/@     >/dev/null
   btrfs subvolume create /mnt/@home >/dev/null
@@ -356,20 +1567,20 @@ else
 fi
 df -h /mnt
 
-log "desplegando rootfs de Arch Linux ARM (bsdtar -xpf, preserva xattr/ACL)"
+log "$(msg stage1_deploy_rootfs)"
 # La ESP se monta DESPUES: vfat no admite los symlinks que trae /boot en el
 # tarball. El kernel lo repuebla pacman en stage2 sobre la ESP ya montada.
 bsdtar -xpf "$PROV/alarm-rootfs.tgz" -C /mnt
-echo "  contenido: $(ls /mnt | tr '\n' ' ')"
-[ -d /mnt/etc ] && [ -d /mnt/usr ] || { warn "rootfs incompleto"; exit 1; }
+echo "  $(msg stage1_contents): $(ls /mnt | tr '\n' ' ')"
+[ -d /mnt/etc ] && [ -d /mnt/usr ] || { warn "$(msg stage1_rootfs_incomplete)"; exit 1; }
 
-log "montando la ESP en /boot"
+log "$(msg stage1_mount_esp)"
 rm -rf /mnt/boot
 mkdir -p /mnt/boot
 mount -t vfat "${DISK}1" /mnt/boot
 df -h /mnt /mnt/boot
 
-log "montajes del chroot"
+log "$(msg stage1_mounts)"
 for d in proc sys dev run tmp; do mkdir -p "/mnt/$d"; done
 mount -t proc  none /mnt/proc
 mount -t sysfs none /mnt/sys
@@ -379,14 +1590,19 @@ mount -t tmpfs none /mnt/run
 mount -t tmpfs -o size=4G none /mnt/tmp
 mkdir -p /mnt/dev/pts && mount -t devpts none /mnt/dev/pts 2>/dev/null || true
 
-log "DNS dentro del chroot"
+log "$(msg stage1_dns)"
 rm -f /mnt/etc/resolv.conf
 printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /mnt/etc/resolv.conf
 
-log "copiando payload"
+log "$(msg stage1_copy_payload)"
 mkdir -p /mnt/root/prov
 cp "$PROV/stage2.sh" "$PROV/stage3.sh" "$PROV/config.env" \
    "$PROV/packages-core.txt" "$PROV/packages-extra.txt" /mnt/root/prov/
+[ -f "$PROV/catalog.sh" ] && {
+  cp "$PROV/catalog.sh" /mnt/root/prov/catalog.sh
+  mkdir -p /mnt/usr/local/share/omarchy
+  cp "$PROV/catalog.sh" /mnt/usr/local/share/omarchy/catalog.sh
+}
 [ -f "$PROV/extras.sh" ] && cp "$PROV/extras.sh" /mnt/root/prov/omarchy-arm-extras
 [ -f "$PROV/armsync.sh" ] && cp "$PROV/armsync.sh" /mnt/root/prov/10-arm-sync
 [ -f "$PROV/clipbrd.sh" ] && cp "$PROV/clipbrd.sh" /mnt/root/prov/omarchy-arm-clipboard
@@ -397,19 +1613,19 @@ ROOT_MOUNT_OPTS=$MOPT_ROOT
 EOF
 chmod +x /mnt/root/prov/stage2.sh /mnt/root/prov/stage3.sh
 
-log "entrando en chroot -> stage2"
+log "$(msg stage1_chroot)"
 set +e
 chroot /mnt /bin/bash /root/prov/stage2.sh
 rc=$?
 set -e
 
-log "desmontando"
+log "$(msg stage1_unmount)"
 sync
 umount -R /mnt/tmp /mnt/run /mnt/dev /mnt/sys /mnt/proc 2>/dev/null || true
 umount -R /mnt/boot 2>/dev/null || true
 umount -R /mnt 2>/dev/null || umount -l /mnt
 sync
-echo "==> [stage1] terminado rc=$rc"
+echo "==> [stage1] $(msg stage1_finished "$rc")"
 echo "TOK_BUILD_$rc"
 trap - EXIT
 exit $rc
@@ -426,20 +1642,27 @@ set -euo pipefail
 . /root/prov/fsinfo.env
 export LANG=C LC_ALL=C
 
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /root/prov/catalog.sh /usr/local/share/omarchy/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
+
 log()  { echo ""; echo "==> [stage2] $*"; }
 warn() { echo "!!  [stage2] $*"; }
 
-trap 'warn "fallo en la linea $LINENO"; exit 1' ERR
+trap 'warn "$(msg stage2_line_failed "$LINENO")"; exit 1' ERR
 
 # ---------------------------------------------------------------- pacman
-log "inicializando el llavero de Arch Linux ARM"
+log "$(msg stage2_keyring)"
 pacman-key --init
 pacman-key --populate archlinuxarm
 
-log "actualizando el sistema (el tarball es de agosto, los repos van al dia)"
+log "$(msg stage2_update)"
 pacman -Syu --noconfirm --needed
 
-log "sistema base"
+log "$(msg stage2_base)"
 # linux-firmware se omite a proposito: ~800 MB inutiles en una VM
 pacman -S --noconfirm --needed \
   base base-devel linux-aarch64 \
@@ -448,7 +1671,7 @@ pacman -S --noconfirm --needed \
   rsync wget curl unzip zip
 
 # ---------------------------------------------------------------- localizacion
-log "zona horaria, locales, teclado, hostname"
+log "$(msg stage2_locale)"
 ln -sf "/usr/share/zoneinfo/$VM_TIMEZONE" /etc/localtime
 sed -i "s/^#\(${VM_LOCALE} \)/\1/; s/^#\(${VM_LOCALE_EXTRA} \)/\1/" /etc/locale.gen
 grep -q "^${VM_LOCALE} " /etc/locale.gen || echo "${VM_LOCALE} UTF-8" >> /etc/locale.gen
@@ -466,7 +1689,7 @@ EOF
 systemd-machine-id-setup || true
 
 # ---------------------------------------------------------------- fstab
-log "fstab"
+log "$(msg stage2_fstab)"
 if [ "$ROOTFS" = btrfs ]; then
 cat > /etc/fstab <<EOF
 LABEL=OMROOT  /      btrfs  rw,noatime,compress=zstd:3,subvol=@         0 0
@@ -484,7 +1707,7 @@ fi
 cat /etc/fstab
 
 # ---------------------------------------------------------------- usuario
-log "usuario $VM_USER"
+log "$(msg stage2_user "$VM_USER")"
 userdel -r alarm 2>/dev/null || true
 if ! id -u "$VM_USER" >/dev/null 2>&1; then
   useradd -m -G wheel,video,audio,input,storage,network,lp -s /bin/bash -c "$VM_FULLNAME" "$VM_USER"
@@ -496,7 +1719,7 @@ install -m 0440 /dev/stdin /etc/sudoers.d/10-wheel <<<'%wheel ALL=(ALL:ALL) ALL'
 install -m 0440 /dev/stdin /etc/sudoers.d/99-install <<<"$VM_USER ALL=(ALL:ALL) NOPASSWD: ALL"
 
 # ---------------------------------------------------------------- initramfs
-log "mkinitcpio (modulos virtio + btrfs)"
+log "$(msg stage2_initramfs)"
 sed -i 's/^MODULES=.*/MODULES=(virtio virtio_pci virtio_blk virtio_scsi virtio_net virtio_gpu 9p 9pnet 9pnet_virtio btrfs ext4)/' /etc/mkinitcpio.conf
 grep -q '^MODULES=' /etc/mkinitcpio.conf || echo 'MODULES=(virtio virtio_pci virtio_blk virtio_gpu 9p 9pnet_virtio btrfs)' >> /etc/mkinitcpio.conf
 mkinitcpio -P
@@ -512,22 +1735,22 @@ bootctl --esp-path=/boot --no-variables install
 # kernel. "pacman -S --needed" no lo repone si la version instalada ya coincide
 # con la del repositorio, asi que se fuerza la reinstalacion del paquete.
 if [ ! -f /boot/Image ] && [ ! -f /boot/vmlinuz-linux-aarch64 ]; then
-  echo "  /boot vacio: reinstalando linux-aarch64 para repoblarlo"
-  pacman -S --noconfirm linux-aarch64 || warn "no se pudo reinstalar el kernel"
-  mkinitcpio -P || warn "mkinitcpio fallo tras reinstalar"
+  echo "  $(msg stage2_boot_empty)"
+  pacman -S --noconfirm linux-aarch64 || warn "$(msg stage2_kernel_reinstall_failed)"
+  mkinitcpio -P || warn "$(msg stage2_initramfs_failed)"
 fi
 
 KERNEL_IMG=""
 for c in /boot/Image /boot/vmlinuz-linux-aarch64 /boot/Image.gz; do
   [ -f "$c" ] && { KERNEL_IMG="/$(basename "$c")"; break; }
 done
-[ -n "$KERNEL_IMG" ] || { warn "no encuentro la imagen del kernel en /boot"; ls -la /boot; exit 1; }
+[ -n "$KERNEL_IMG" ] || { warn "$(msg stage2_kernel_missing)"; ls -la /boot; exit 1; }
 
 INITRD=""
 for c in /boot/initramfs-linux-aarch64.img /boot/initramfs-linux.img; do
   [ -f "$c" ] && { INITRD="/$(basename "$c")"; break; }
 done
-[ -n "$INITRD" ] || { warn "no encuentro el initramfs"; ls -la /boot; exit 1; }
+[ -n "$INITRD" ] || { warn "$(msg stage2_initramfs_missing)"; ls -la /boot; exit 1; }
 
 mkdir -p /boot/loader/entries
 cat > /boot/loader/loader.conf <<EOF
@@ -543,7 +1766,7 @@ initrd   $INITRD
 options  root=LABEL=OMROOT $KERNEL_ROOTFLAGS rw quiet loglevel=3
 EOF
 cat > /boot/loader/entries/omarchy-verbose.conf <<EOF
-title    Arch Linux ARM — Omarchy (verboso)
+title    Arch Linux ARM — Omarchy ($(msg stage2_verbose))
 linux    $KERNEL_IMG
 initrd   $INITRD
 options  root=LABEL=OMROOT $KERNEL_ROOTFLAGS rw
@@ -552,7 +1775,7 @@ echo "  kernel=$KERNEL_IMG initrd=$INITRD"
 echo "  ESP:"; find /boot/EFI /boot/loader -maxdepth 3 | sort
 
 # ---------------------------------------------------------------- red
-log "red: NetworkManager (se desactiva systemd-networkd del tarball)"
+log "$(msg stage2_network)"
 systemctl disable systemd-networkd.service systemd-networkd.socket 2>/dev/null || true
 systemctl disable systemd-resolved.service 2>/dev/null || true
 rm -f /etc/systemd/network/*.network 2>/dev/null || true
@@ -560,31 +1783,31 @@ systemctl enable NetworkManager.service
 systemctl enable systemd-timesyncd.service 2>/dev/null || true
 
 # ---------------------------------------------------------------- escritorio
-log "instalando el stack de escritorio (Hyprland + herramientas de Omarchy)"
+log "$(msg stage2_desktop)"
 install_list() {
   local file="$1" label="$2" fatal="$3"
   mapfile -t PKGS < <(grep -vE '^\s*#|^\s*$' "$file")
-  echo "  $label: ${#PKGS[@]} paquetes"
+  echo "  $label: ${#PKGS[@]} $(msg stage2_packages)"
   if pacman -S --noconfirm --needed "${PKGS[@]}"; then return 0; fi
-  warn "$label: instalacion en bloque fallida; reintentando uno a uno"
+  warn "$(msg stage2_batch_failed "$label")"
   local FAILED=()
   for p in "${PKGS[@]}"; do
     pacman -S --noconfirm --needed "$p" >/dev/null 2>&1 || FAILED+=("$p")
   done
   if [ ${#FAILED[@]} -gt 0 ]; then
-    warn "$label no instalados: ${FAILED[*]}"
+    warn "$(msg stage2_packages_failed "$label" "${FAILED[*]}")"
     printf '%s\n' "${FAILED[@]}" >> /root/failed-packages.txt
     [ "$fatal" = fatal ] && return 1
   fi
   return 0
 }
-install_list /root/prov/packages-core.txt  "nucleo" fatal
+install_list /root/prov/packages-core.txt  "$(msg stage2_core)" fatal
 set +e
-install_list /root/prov/packages-extra.txt "extras" soft
+install_list /root/prov/packages-extra.txt "$(msg stage2_extras)" soft
 set -e
 
-log "servicios de sistema"
-systemctl enable sddm.service 2>/dev/null || warn "sddm no disponible"
+log "$(msg stage2_services)"
+systemctl enable sddm.service 2>/dev/null || warn "$(msg stage2_sddm_missing)"
 # Integracion con UTM: utmctl ip-address/exec/file necesitan el guest agent
 systemctl enable qemu-guest-agent.service 2>/dev/null || true
 # spice-vdagentd es una unidad "static": no se habilita, la activa el socket
@@ -600,7 +1823,7 @@ install -Dm644 /dev/stdin /etc/udev/rules.d/70-omarchy-vdagent.rules <<'UDEV'
 # omarchy-arm-vdagent pueda hablar el protocolo del portapapeles.
 SUBSYSTEM=="virtio-ports", ATTR{name}=="com.redhat.spice.0", TAG+="uaccess", MODE="0660"
 UDEV
-echo "  regla udev para /dev/virtio-ports/com.redhat.spice.0"
+echo "  $(msg stage2_udev_rule) /dev/virtio-ports/com.redhat.spice.0"
 
 # Carpeta compartida de UTM. El bundle declara DirectoryShareMode=VirtFS, pero
 # eso solo expone el dispositivo: el invitado tiene que montarlo. El tag es
@@ -615,13 +1838,13 @@ if ! grep -q '^share ' /etc/fstab; then
 share  /mnt/share  9p  trans=virtio,version=9p2000.L,rw,nofail,x-systemd.automount,_netdev,msize=512000  0  0
 FSTAB
 fi
-echo "  /mnt/share listo para la carpeta compartida de UTM"
+echo "  $(msg stage2_share_ready)"
 systemctl enable bluetooth.service 2>/dev/null || true
 systemctl enable docker.service 2>/dev/null || true
 usermod -aG docker "$VM_USER" 2>/dev/null || true
 
 # ---------------------------------------------------------------- dotfiles
-log "etapa 3: dotfiles de Omarchy como $VM_USER"
+log "$(msg stage2_stage3 "$VM_USER")"
 chmod +x /root/prov/stage3.sh
 install -d -o "$VM_USER" -g "$VM_USER" "/home/$VM_USER"
 # stage3 corre como usuario normal y /root es 0750: cualquier prueba suya sobre
@@ -634,18 +1857,18 @@ done
 cp /root/prov/stage3.sh /root/prov/config.env "/home/$VM_USER/"
 chown -R "$VM_USER:$VM_USER" "$PROVDIR"
 chown "$VM_USER:$VM_USER" "/home/$VM_USER/stage3.sh" "/home/$VM_USER/config.env"
-echo "  disponible para stage3: $(ls "$PROVDIR" | tr '\n' ' ')"
+echo "  $(msg stage2_stage3_available): $(ls "$PROVDIR" | tr '\n' ' ')"
 # El resultado de stage3 tiene que llegar al anfitrion: antes se degradaba a un
 # warn y stage2 emitia su token de exito igualmente, asi que un stage3 que
 # fallara entero producia un disco sin un solo dotfile de Omarchy declarado OK.
 su - "$VM_USER" -c "bash ~/stage3.sh"; STAGE3_RC=$?
-[ $STAGE3_RC -eq 0 ] || warn "stage3 termino con errores (rc=$STAGE3_RC)"
+[ $STAGE3_RC -eq 0 ] || warn "$(msg stage2_stage3_failed "$STAGE3_RC")"
 echo "TOK_STAGE3_$STAGE3_RC"
 rm -f "/home/$VM_USER/stage3.sh" "/home/$VM_USER/config.env"
 rm -rf "$PROVDIR"
 
 # ---------------------------------------------------------------- login SDDM
-log "SDDM: sesion Omarchy con autologin"
+log "$(msg stage2_sddm_session)"
 OM="/home/$VM_USER/.local/share/omarchy"
 mkdir -p /usr/local/share/wayland-sessions /etc/sddm.conf.d /usr/share/sddm
 if [ -f "$OM/default/wayland-sessions/omarchy.desktop" ]; then
@@ -665,11 +1888,11 @@ User=$VM_USER
 Session=$SESSION
 EOF
 sed -i '/-auth.*pam_gnome_keyring\.so/d;/-password.*pam_gnome_keyring\.so/d' /etc/pam.d/sddm 2>/dev/null || true
-echo "  sesion=$SESSION"
+echo "  $(msg stage2_session)=$SESSION"
 ls /usr/local/share/wayland-sessions /usr/share/wayland-sessions 2>/dev/null
 
 # ---------------------------------------------------------------- ajustes VM
-log "ajustes propios de maquina virtual"
+log "$(msg stage2_vm_tuning)"
 # El cursor por hardware y los modificadores DRM dan problemas sobre virtio-gpu
 mkdir -p /etc/environment.d
 cat > /etc/environment.d/90-vm-graphics.conf <<'EOF'
@@ -687,22 +1910,22 @@ EOF
 # consola serie util para depurar desde el host
 systemctl enable serial-getty@ttyAMA0.service 2>/dev/null || true
 
-log "limpieza"
+log "$(msg stage2_cleanup)"
 rm -f /etc/sudoers.d/99-install
 paccache -rk1 2>/dev/null || true
 rm -rf /var/cache/pacman/pkg/* 2>/dev/null || true
 
-log "resumen"
+log "$(msg stage2_summary)"
 echo "  kernel:    $(pacman -Q linux-aarch64 2>/dev/null || echo '?')"
-echo "  hyprland:  $(pacman -Q hyprland 2>/dev/null || echo 'NO INSTALADO')"
-echo "  sddm:      $(pacman -Q sddm 2>/dev/null || echo 'NO INSTALADO')"
+echo "  hyprland:  $(pacman -Q hyprland 2>/dev/null || echo "$(msg stage2_not_installed)")"
+echo "  sddm:      $(pacman -Q sddm 2>/dev/null || echo "$(msg stage2_not_installed)")"
 echo "  mesa:      $(pacman -Q mesa 2>/dev/null || echo '?')"
-echo "  usuario:   $(id "$VM_USER")"
-echo "  dotfiles:  $(ls -d /home/$VM_USER/.config/hypr 2>/dev/null || echo 'FALTAN')"
+echo "  $(msg stage2_user_label): $(id "$VM_USER")"
+echo "  dotfiles:  $(ls -d /home/$VM_USER/.config/hypr 2>/dev/null || echo "$(msg stage2_missing)")"
 sync
 touch /root/STAGE2_OK
 echo ""
-echo "==> [stage2] COMPLETADO"
+echo "==> [stage2] $(msg stage2_completed)"
 __PAYLOAD_PROVISION_STAGE2_SH__
 chmod +x "$W/provision/stage2.sh"
 
@@ -714,6 +1937,13 @@ cat > "$W/provision/stage3.sh" <<'__PAYLOAD_PROVISION_STAGE3_SH__'
 set -uo pipefail   # sin -e: esta etapa es best-effort por partes
 . ~/config.env
 
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /root/prov/catalog.sh /usr/local/share/omarchy/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
+
 log()  { echo ""; echo "==> [stage3] $*"; }
 warn() { echo "!!  [stage3] $*"; }
 
@@ -723,10 +1953,10 @@ export PATH="$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin"
 export OMARCHY_CHROOT_INSTALL=1
 
 # ------------------------------------------------------------ repo de Omarchy
-log "clonando basecamp/omarchy (rama ${OMARCHY_REF:-quattro} = Omarchy 4; master es 3.8.5)"
+log "$(msg stage3_clone "${OMARCHY_REF:-quattro}")"
 rm -rf "$OMARCHY_PATH"
 mkdir -p "$(dirname "$OMARCHY_PATH")"
-git clone --depth 1 --branch "${OMARCHY_REF:-quattro}" https://github.com/basecamp/omarchy.git "$OMARCHY_PATH" || { warn "clone fallido"; exit 1; }
+git clone --depth 1 --branch "${OMARCHY_REF:-quattro}" https://github.com/basecamp/omarchy.git "$OMARCHY_PATH" || { warn "$(msg stage3_clone_failed)"; exit 1; }
 # core.fileMode=false ANTES del chmod: si no, los cambios de permiso dejan el
 # checkout sucio y `git pull --ff-only` se niega a actualizarlo despues.
 git -C "$OMARCHY_PATH" config core.fileMode false
@@ -735,23 +1965,23 @@ echo "  version: $(cat "$OMARCHY_PATH/version" 2>/dev/null)"
 
 # ------------------------------------------------------------ dotfiles
 # Equivalente a install/config/config.sh
-log "copiando dotfiles a ~/.config"
+log "$(msg stage3_copy_dotfiles)"
 mkdir -p ~/.config
 cp -R "$OMARCHY_PATH"/config/* ~/.config/
 cp "$OMARCHY_PATH/default/bashrc" ~/.bashrc
 ls ~/.config | tr '\n' ' '; echo
 
 # ------------------------------------------------------------ AUR
-log "AUR: piezas de Omarchy que no están en los repos de Arch Linux ARM"
+log "$(msg stage3_aur)"
 mkdir -p /tmp/aur
 aur_install() {
   local p="$1"
   echo "  --- $p"
   rm -rf "/tmp/aur/$p"
-  git clone --depth 1 -q "https://aur.archlinux.org/$p.git" "/tmp/aur/$p" || { warn "clone $p"; return 1; }
+  git clone --depth 1 -q "https://aur.archlinux.org/$p.git" "/tmp/aur/$p" || { warn "$(msg stage3_clone_package "$p")"; return 1; }
   ( cd "/tmp/aur/$p" && makepkg -si --noconfirm --needed --noprogressbar ) >"/tmp/aur/$p.log" 2>&1 \
-    || { warn "makepkg $p falló (log: /tmp/aur/$p.log)"; tail -15 "/tmp/aur/$p.log"; return 1; }
-  echo "  ok: $p"
+    || { warn "$(msg stage3_makepkg_failed "$p")"; tail -15 "/tmp/aur/$p.log"; return 1; }
+  echo "  $(msg stage3_ok): $p"
 }
 
 AUR_OK=(); AUR_KO=()
@@ -761,12 +1991,12 @@ AUR_OK=(); AUR_KO=()
 for p in yay xdg-terminal-exec; do
   if aur_install "$p"; then AUR_OK+=("$p"); else AUR_KO+=("$p"); fi
 done
-echo "  AUR ok:    ${AUR_OK[*]:-ninguno}"
-echo "  AUR falló: ${AUR_KO[*]:-ninguno}"
+echo "  AUR $(msg stage3_ok):    ${AUR_OK[*]:-$(msg stage3_none)}"
+echo "  AUR $(msg stage3_failed): ${AUR_KO[*]:-$(msg stage3_none)}"
 
 # Sustituto si xdg-terminal-exec no compiló: Omarchy usa $TERMINAL=xdg-terminal-exec
 if ! command -v xdg-terminal-exec >/dev/null 2>&1; then
-  warn "xdg-terminal-exec ausente: instalando un envoltorio sobre alacritty"
+  warn "$(msg stage3_terminal_missing)"
   sudo install -m 0755 /dev/stdin /usr/local/bin/xdg-terminal-exec <<'EOF'
 #!/bin/sh
 # Envoltorio minimo: Omarchy exporta TERMINAL=xdg-terminal-exec.
@@ -787,7 +2017,7 @@ printf 'Alacritty.desktop\n' > ~/.config/xdg-terminals.list
 # /etc/profile.d y /usr/share/uwsm/env.d. Ese paquete solo existe para x86_64,
 # asi que aqui se replica a mano. Sin esto OMARCHY_PATH queda vacio y Hyprland
 # arranca en modo emergencia por no encontrar default/hypr/bootstrap.lua.
-log "integrando Omarchy en las rutas de sistema (sustituye al paquete pacman)"
+log "$(msg stage3_integrate)"
 sudo ln -sfn "$OMARCHY_PATH" /usr/share/omarchy
 # Los comandos van a /usr/bin, que es donde los pone el package() de upstream.
 # Ponerlos en /usr/local/bin parecia mas limpio (no choca con pacman) pero
@@ -808,7 +2038,7 @@ for f in "$OMARCHY_PATH"/bin/*; do
   chmod +x "$f"
   sudo ln -sfn "/usr/share/omarchy/bin/$(basename "$f")" "/usr/bin/$(basename "$f")" && n=$((n+1))
 done
-echo "  $n binarios en /usr/bin -> /usr/share/omarchy/bin"
+echo "  $(msg stage3_binaries "$n")"
 # Las unidades de usuario van a /usr/lib/systemd/user/, que es donde systemd las
 # busca. Las instala el paquete omarchy-settings, que tampoco existe para ARM.
 # Sin esto, install/user/first-run/enable-user-units.sh falla en cada login, y
@@ -818,7 +2048,8 @@ echo "  $n binarios en /usr/bin -> /usr/share/omarchy/bin"
 if [ -d "$OMARCHY_PATH/default/systemd/user" ]; then
   sudo install -d /usr/lib/systemd/user
   sudo cp -a "$OMARCHY_PATH/default/systemd/user/." /usr/lib/systemd/user/
-  echo "  $(ls "$OMARCHY_PATH/default/systemd/user"/*.service 2>/dev/null | wc -l) unidades de usuario en /usr/lib/systemd/user"
+  unit_count=$(ls "$OMARCHY_PATH/default/systemd/user"/*.service 2>/dev/null | wc -l)
+  echo "  $(msg stage3_units "$unit_count")"
 fi
 for d in system-sleep zram-generator.conf.d; do
   [ -d "$OMARCHY_PATH/default/systemd/$d" ] && \
@@ -843,7 +2074,7 @@ for pf in /etc/pam.d/sddm /etc/pam.d/sddm-autologin /etc/pam.d/sddm-greeter; do
   [ -f "$pf" ] && sudo sed -i '/-auth.*pam_gnome_keyring\.so/d;/-password.*pam_gnome_keyring\.so/d' "$pf"
 done
 
-log "SDDM: tema Omarchy y sesion"
+log "$(msg stage3_sddm)"
 sudo mkdir -p /usr/share/sddm/themes /usr/local/share/wayland-sessions
 sudo cp -a "$OMARCHY_PATH/default/sddm/omarchy" /usr/share/sddm/themes/ 2>/dev/null || true
 [ -f "$OMARCHY_PATH/default/sddm/hyprland.lua" ] && sudo cp -a "$OMARCHY_PATH/default/sddm/hyprland.lua" /usr/share/sddm/hyprland.lua
@@ -856,10 +2087,10 @@ export OMARCHY_PATH=/usr/share/omarchy
 export PATH="/usr/local/bin:$PATH"
 
 # ------------------------------------------------------------ tema
-log "aplicando el tema Tokyo Night"
+log "$(msg stage3_theme)"
 mkdir -p ~/.config/omarchy/themes
 if command -v omarchy-theme-set >/dev/null 2>&1; then
-  omarchy-theme-set "Tokyo Night" || warn "omarchy-theme-set falló; enlazando a mano"
+  omarchy-theme-set "Tokyo Night" || warn "$(msg stage3_theme_failed)"
 fi
 if [ ! -e ~/.config/omarchy/current/theme ]; then
   mkdir -p ~/.config/omarchy/current
@@ -874,7 +2105,7 @@ ln -snf ~/.local/state/omarchy/current/theme/btop.theme ~/.config/btop/themes/cu
 ls -l ~/.local/state/omarchy/current/ 2>/dev/null
 
 # ------------------------------------------------------------ ajustes de VM
-log "ajustes para máquina virtual"
+log "$(msg stage3_vm_tuning)"
 # quattro usa configuracion Lua: escribir monitors.conf no serviria de nada.
 cat > ~/.config/hypr/monitors.lua <<'LUA'
 -- See https://wiki.hypr.land/Configuring/Basics/Monitors/
@@ -911,7 +2142,8 @@ mkdir -p ~/.local/state/omarchy/migrations
 for f in "$OMARCHY_PATH"/migrations/*.sh; do
   [ -f "$f" ] && : > ~/.local/state/omarchy/migrations/"$(basename "$f")"
 done
-echo "  migraciones selladas: $(ls -1 ~/.local/state/omarchy/migrations | wc -l)"
+migration_count=$(ls -1 ~/.local/state/omarchy/migrations | wc -l)
+echo "  $(msg stage3_migrations "$migration_count")"
 
 # --- branding (about + salvapantallas) -----------------------------------
 mkdir -p ~/.config/omarchy/branding
@@ -1006,11 +2238,9 @@ if pacman -Si zig >/dev/null 2>&1; then
 fi
 
 if [ "${HACER_TOOLS:-si}" != "si" ]; then
-  warn "compilacion de herramientas desactivada: faltaran ttfx, tensaku, omacalc,"
-  warn "omacut, omawrite, aether, cliamp y omarchy-nvim (se pueden anadir despues"
-  warn "con: yay -S <paquete>)"
+  warn "$(msg stage3_tools_disabled)"
 else
-log "compilando las herramientas de Omarchy ausentes en aarch64"
+log "$(msg stage3_tools_build)"
 TOOLS_OK=(); TOOLS_KO=()
 for spec in \
   "aur:yaru-icon-theme" "aur:ttf-ia-writer" "aur:tzupdate" "aur:ufw-docker" \
@@ -1021,8 +2251,8 @@ for spec in \
   src=${spec%%:*}; pkg=${spec#*:}
   if build_omarchy_tool "$src" "$pkg"; then TOOLS_OK+=("$pkg"); else TOOLS_KO+=("$pkg"); fi
 done
-echo "  compiladas: ${TOOLS_OK[*]:-ninguna}"
-[ ${#TOOLS_KO[@]} -gt 0 ] && warn "no compilaron: ${TOOLS_KO[*]}"
+echo "  $(msg stage3_built): ${TOOLS_OK[*]:-$(msg stage3_none)}"
+[ ${#TOOLS_KO[@]} -gt 0 ] && warn "$(msg stage3_not_built "${TOOLS_KO[*]}")"
 rm -rf /tmp/omabuild
 fi
 # Omarchy sustituye a proposito dos iconos de Yaru por los de Adwaita; si Yaru
@@ -1043,7 +2273,7 @@ sudo bash "$OMARCHY_PATH/install/config/theme-system.sh" >/dev/null 2>&1 || true
 # Este envoltorio compara lo que de verdad toca: uname -r contra el directorio
 # de modulos que posee el paquete del kernel. /usr/local/bin va antes que
 # /usr/bin en el PATH, asi que sustituye al original sin tocar el arbol.
-log "envoltorio de omarchy-update-restart (aviso de kernel en ALARM)"
+log "$(msg stage3_kernel_wrapper)"
 sudo install -Dm755 /dev/stdin /usr/local/bin/omarchy-update-restart <<'KRN'
 #!/bin/bash
 # En Arch Linux ARM el kernel no deja vmlinuz en /usr/lib/modules/<ver>/, que es
@@ -1075,14 +2305,14 @@ echo "  /usr/local/bin/omarchy-update-restart"
 
 # --- ttfx: efectos de texto del salvapantallas (Rust, ~12 min) -----------
 if ! command -v ttfx >/dev/null 2>&1 && command -v cargo >/dev/null 2>&1; then
-  log "compilando ttfx desde fuente (no existe para aarch64)"
+  log "$(msg stage3_ttfx_build)"
   rm -rf /tmp/ttfx-src
   if git clone --depth 1 -q https://github.com/omacom-io/ttfx.git /tmp/ttfx-src \
      && ( cd /tmp/ttfx-src && cargo build --release -q ); then
     sudo install -Dm755 /tmp/ttfx-src/target/release/ttfx /usr/local/bin/ttfx
     echo "  ttfx $(ttfx --version 2>/dev/null | head -1)"
   else
-    warn "ttfx no compilo; el salvapantallas mostrara el logo sin efectos"
+    warn "$(msg stage3_ttfx_failed)"
   fi
   rm -rf /tmp/ttfx-src
 fi
@@ -1126,11 +2356,11 @@ mkdir -p ~/Pictures/Screenshots ~/Videos ~/Desktop ~/Documents ~/Downloads
 # oficial, pero son propietarias: incluirlas en una imagen que se distribuye
 # seria redistribuir binarios de terceros. Se deja el instalador a mano.
 if [ -f "$HOME/.omarchy-arm-prov/omarchy-arm-extras" ]; then
-  log "instalador de apps opcionales (omarchy-arm-extras)"
+  log "$(msg stage3_optional_installer)"
   sudo install -Dm755 "$HOME/.omarchy-arm-prov/omarchy-arm-extras" /usr/local/bin/omarchy-arm-extras
   sudo install -Dm644 /dev/stdin /usr/local/share/applications/omarchy-arm-extras.desktop <<'DESK'
 [Desktop Entry]
-Name=Instalar apps que faltan (ARM)
+Name=$(msg desktop_name)
 Comment=1Password, Obsidian, Typora, LocalSend, Google Chrome
 Exec=xdg-terminal-exec omarchy-arm-extras
 Icon=system-software-install
@@ -1138,7 +2368,7 @@ Terminal=false
 Type=Application
 Categories=System;PackageManager;
 DESK
-  echo "  disponible como comando y en el menu de aplicaciones"
+  echo "  $(msg stage3_available_menu)"
 fi
 
 # --- portapapeles compartido con el anfitrion ---------------------------
@@ -1153,7 +2383,7 @@ fi
 # omarchy-arm-vdagent habla el MISMO protocolo por el MISMO puerto, pero al
 # otro lado usa wl-copy/wl-paste. Se activa solo, como servicio de usuario.
 if [ -f "$HOME/.omarchy-arm-prov/omarchy-arm-vdagent" ]; then
-  log "agente de portapapeles nativo para Wayland"
+  log "$(msg stage3_clipboard_agent)"
   sudo install -Dm755 "$HOME/.omarchy-arm-prov/omarchy-arm-vdagent" /usr/local/bin/omarchy-arm-vdagent
   # spice-vdagent se queda instalado (aporta redimensionado de pantalla) pero
   # NO debe competir por el puerto: se le quita el arranque automatico.
@@ -1179,13 +2409,13 @@ WantedBy=graphical-session.target
 UNIT
   systemctl --user daemon-reload 2>/dev/null || true
   systemctl --user enable omarchy-arm-vdagent.service 2>/dev/null || true
-  echo "  /usr/local/bin/omarchy-arm-vdagent + servicio de usuario"
+  echo "  $(msg stage3_vdagent_ready)"
 fi
 # Puente por carpeta compartida, como alternativa si el canal SPICE no esta
 # disponible (por ejemplo con el backend de virtualizacion de Apple).
 if [ -f "$HOME/.omarchy-arm-prov/omarchy-arm-clipboard" ]; then
   sudo install -Dm755 "$HOME/.omarchy-arm-prov/omarchy-arm-clipboard" /usr/local/bin/omarchy-arm-clipboard
-  echo "  /usr/local/bin/omarchy-arm-clipboard (alternativa por carpeta compartida)"
+  echo "  $(msg stage3_clipboard_fallback)"
 
   # OBS Studio y Pinta son software libre: pueden viajar dentro de la imagen, y
   # asi es como se distribuye. Se instalan con el mismo instalador para no
@@ -1193,16 +2423,16 @@ if [ -f "$HOME/.omarchy-arm-prov/omarchy-arm-clipboard" ]; then
   # x86-only; Pinta necesita el .NET arm64 de Microsoft, que Arch no empaqueta).
   # Es lo mas caro del build: ~45 min. HACER_LIBRES=no lo omite.
   if [ "${HACER_LIBRES:-si}" = "si" ]; then
-    log "OBS Studio y Pinta (software libre, van dentro de la imagen; ~45 min)"
+    log "$(msg stage3_free_apps)"
     if /usr/local/bin/omarchy-arm-extras pinta obs; then
-      echo "  pinta: $(pacman -Q pinta 2>/dev/null || echo FALTA)"
-      echo "  obs:   $(pacman -Q obs-studio 2>/dev/null || echo FALTA)"
+      echo "  pinta: $(pacman -Q pinta 2>/dev/null || msg stage3_missing)"
+      echo "  obs:   $(pacman -Q obs-studio 2>/dev/null || msg stage3_missing)"
     else
-      warn "OBS o Pinta no se instalaron; se pueden anadir despues con:"
+      warn "$(msg stage3_free_apps_failed)"
       warn "  omarchy-arm-extras pinta obs"
     fi
   else
-    echo "  OBS y Pinta omitidos (HACER_LIBRES=no)"
+    echo "  $(msg stage3_free_apps_skipped)"
   fi
 fi
 
@@ -1213,16 +2443,16 @@ fi
 #    OMARCHY_PATH apunta FUERA de /usr/share/omarchy, y aqui apunta justo ahi.
 #    Sin el hook, el sistema recibe paquetes pero el arbol de Omarchy (scripts,
 #    temas, configuracion) se queda congelado en la version clonada.
-log "actualizaciones: snapper + hook post-update"
-sudo pacman -S --noconfirm --needed snapper >/dev/null 2>&1 || warn "snapper no disponible"
+log "$(msg stage3_updates)"
+sudo pacman -S --noconfirm --needed snapper >/dev/null 2>&1 || warn "$(msg stage3_snapper_missing)"
 if command -v snapper >/dev/null 2>&1; then
   sudo bash -euo pipefail "$OMARCHY_PATH/install/config/snapper.sh" >/dev/null 2>&1 \
-    && echo "  snapper configurado: instantanea antes de cada actualizacion" \
-    || warn "no se pudo configurar snapper"
+    && echo "  $(msg stage3_snapper_ready)" \
+    || warn "$(msg stage3_snapper_failed)"
 fi
 if [ -f "$HOME/.omarchy-arm-prov/10-arm-sync" ]; then
   install -Dm755 "$HOME/.omarchy-arm-prov/10-arm-sync" ~/.config/omarchy/hooks/post-update.d/10-arm-sync
-  echo "  hook post-update instalado"
+  echo "  $(msg stage3_hook_ready)"
 fi
 
 log "git"
@@ -1231,15 +2461,15 @@ git config --global user.email "$VM_EMAIL"
 git config --global init.defaultBranch master
 
 # ------------------------------------------------------------ resumen
-log "resumen"
-echo "  omarchy:   $(ls -d "$OMARCHY_PATH" 2>/dev/null || echo FALTA)"
-echo "  ~/.config: $(ls ~/.config | wc -l) entradas"
-echo "  tema:      $(readlink -f ~/.config/omarchy/current/theme 2>/dev/null || echo 'sin enlazar')"
+log "$(msg stage3_summary)"
+echo "  omarchy:   $(ls -d "$OMARCHY_PATH" 2>/dev/null || msg stage3_missing)"
+echo "  ~/.config: $(ls ~/.config | wc -l) $(msg stage3_entries)"
+echo "  tema:      $(readlink -f ~/.config/omarchy/current/theme 2>/dev/null || echo "$(msg stage3_unlinked)")"
 echo "  hyprland:  $(command -v Hyprland || command -v hyprland || echo 'NO')"
 echo "  omarchy-shell: $(command -v omarchy-shell || echo 'NO')"
 echo "  terminal:  $(command -v xdg-terminal-exec || echo 'NO')"
 echo ""
-echo "==> [stage3] COMPLETADO"
+echo "==> [stage3] $(msg stage3_completed)"
 __PAYLOAD_PROVISION_STAGE3_SH__
 chmod +x "$W/provision/stage3.sh"
 
@@ -1250,24 +2480,30 @@ cat > "$W/provision/repair.sh" <<'__PAYLOAD_PROVISION_REPAIR_SH__'
 # sin volver a particionar ni descargar nada. Para iterar tras un fallo puntual.
 set -eu
 PROV=/media/prov
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" "$PROV/catalog.sh" /root/prov/catalog.sh /usr/local/share/omarchy/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
 log() { echo ""; echo "==> [repair] $*"; }
 trap 'rc=$?; [ "$rc" -ne 0 ] && echo "TOK_REPAIR_$rc"' EXIT
 
-log "modulos del kernel"
+log "$(msg repair_kernel_modules)"
 # Montar btrfs/vfat solo necesita el modulo del kernel, no las utilidades de
 # espacio de usuario: esta etapa NO depende de que haya red.
 for m in btrfs vfat fat nls_cp437 nls_iso8859-1 nls_utf8 crc32c-generic xxhash_generic; do
   modprobe "$m" 2>/dev/null || true
 done
-grep -qw btrfs /proc/filesystems || { echo "!! el kernel del live no soporta btrfs"; exit 1; }
-echo "  filesystems: $(tr '\n' ' ' < /proc/filesystems | tr -s ' ')"
+grep -qw btrfs /proc/filesystems || { echo "!! $(msg repair_btrfs_missing)"; exit 1; }
+echo "  $(msg repair_filesystems): $(tr '\n' ' ' < /proc/filesystems | tr -s ' ')"
 
-log "red (best-effort, solo por comodidad)"
+log "$(msg repair_network)"
 ip link set eth0 up 2>/dev/null || true
 udhcpc -i eth0 -q -n -t 8 >/dev/null 2>&1 || true
-ip -4 addr show eth0 2>/dev/null | grep -o 'inet [0-9.]*' || echo "  (sin red; se continua igualmente)"
+ip -4 addr show eth0 2>/dev/null | grep -o 'inet [0-9.]*' || echo "  ($(msg repair_no_network))"
 
-log "montando el sistema instalado"
+log "$(msg repair_mount)"
 umount -R /mnt 2>/dev/null || true
 if mount -t btrfs -o rw,noatime,compress=zstd:3,subvol=@ /dev/vda2 /mnt 2>/dev/null; then
   mount -t btrfs -o rw,noatime,compress=zstd:3,subvol=@home /dev/vda2 /mnt/home
@@ -1287,7 +2523,7 @@ rm -f /mnt/etc/resolv.conf
 printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /mnt/etc/resolv.conf
 df -h /mnt /mnt/boot
 
-log "ejecutando $FIXSCRIPT dentro del chroot"
+log "$(msg repair_run_fix "$FIXSCRIPT")"
 mkdir -p /mnt/root/prov
 cp "$PROV/$FIXSCRIPT" /mnt/root/prov/
 [ -f "$PROV/config.env" ] && cp "$PROV/config.env" /mnt/root/prov/
@@ -1296,6 +2532,11 @@ cp "$PROV/$FIXSCRIPT" /mnt/root/prov/
 [ -f "$PROV/clipbrd.sh" ] && cp "$PROV/clipbrd.sh" /mnt/root/prov/omarchy-arm-clipboard
 [ -f "$PROV/vdagent.py" ] && cp "$PROV/vdagent.py" /mnt/root/prov/omarchy-arm-vdagent
 [ -f "$PROV/fsinfo.env" ] && cp "$PROV/fsinfo.env" /mnt/root/prov/
+[ -f "$PROV/catalog.sh" ] && {
+  cp "$PROV/catalog.sh" /mnt/root/prov/catalog.sh
+  mkdir -p /mnt/usr/local/share/omarchy
+  cp "$PROV/catalog.sh" /mnt/usr/local/share/omarchy/catalog.sh
+}
 [ -f "$PROV/stage3.sh" ] && cp "$PROV/stage3.sh" /mnt/root/prov/
 [ -f "$PROV/packages-core.txt" ] && cp "$PROV/packages-core.txt" /mnt/root/prov/
 [ -f "$PROV/packages-extra.txt" ] && cp "$PROV/packages-extra.txt" /mnt/root/prov/
@@ -1307,11 +2548,11 @@ set -e
 
 # El directorio de trabajo no debe quedarse dentro del sistema: se acumulan ahi
 # todos los scripts de reparacion de todas las pasadas.
-log "retirando /root/prov del sistema instalado"
+log "$(msg repair_remove_payload)"
 ls /mnt/root/prov 2>/dev/null | tr '\n' ' '; echo
 rm -rf /mnt/root/prov
 
-log "desmontando"
+log "$(msg repair_unmount)"
 sync
 umount -R /mnt/tmp /mnt/run /mnt/dev /mnt/sys /mnt/proc 2>/dev/null || true
 umount -R /mnt/boot 2>/dev/null || true
@@ -1333,14 +2574,26 @@ set -uo pipefail
 # anfitrion puede comunicar el usuario de construccion. Sin esto, cambiar
 # VM_USER hacia que el sanitizado renombrase a un usuario que no existe.
 [ -f /root/prov/config.env ] && . /root/prov/config.env
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /root/prov/catalog.sh /usr/local/share/omarchy/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
+if [ -f /root/prov/catalog.sh ]; then
+  install -Dm644 /root/prov/catalog.sh /usr/local/share/omarchy/catalog.sh
+elif [ -f /media/prov/catalog.sh ]; then
+  install -Dm644 /media/prov/catalog.sh /usr/local/share/omarchy/catalog.sh
+fi
+printf '%s\n' "${OMARCHY_LANG:-en}" > /etc/omarchy-arm-language
 OLD="${DIST_OLD_USER:-${VM_USER:-}}"
 NEW="${DIST_NEW_USER:-omarchy}"
-[ -n "$OLD" ] || { echo "sanitize: no se de que usuario partir" >&2; exit 1; }
-getent passwd "$OLD" >/dev/null || { echo "sanitize: el usuario '$OLD' no existe" >&2; exit 1; }
+[ -n "$OLD" ] || { echo "sanitize: $(msg sanitize_source_user_missing)" >&2; exit 1; }
+getent passwd "$OLD" >/dev/null || { echo "sanitize: $(msg sanitize_user_missing "$OLD")" >&2; exit 1; }
 log()  { echo ""; echo "==> $*"; }
 warn() { echo "!!  $*" >&2; }
 
-log "1/10 desanclando /usr/share/omarchy del home del usuario"
+log "$(msg sanitize_step1)"
 # Era un symlink a /home/<usuario>/.local/share/omarchy, lo que ata el sistema a
 # ese usuario. Se convierte en directorio real (como haria el paquete pacman) y
 # el home pasa a apuntar ahi.
@@ -1353,7 +2606,7 @@ if [ -L /usr/share/omarchy ]; then
   echo "  /usr/share/omarchy ahora es un directorio real ($(du -sh /usr/share/omarchy | cut -f1))"
 fi
 
-log "2/10 renombrando el usuario $OLD -> $NEW"
+log "$(msg sanitize_step2 "$OLD" "$NEW")"
 if id -u "$OLD" >/dev/null 2>&1; then
   pkill -u "$OLD" 2>/dev/null || true
   usermod -l "$NEW" -d "/home/$NEW" -m "$OLD"
@@ -1368,7 +2621,7 @@ rm -rf "/home/$NEW/.local/share/omarchy"
 ln -sfn /usr/share/omarchy "/home/$NEW/.local/share/omarchy"
 chown -h "$NEW:$NEW" "/home/$NEW/.local/share/omarchy"
 
-log "3/10 SDDM: autologin al usuario generico"
+log "$(msg sanitize_step3)"
 cat > /etc/sddm.conf.d/20-autologin.conf <<EOF
 [Autologin]
 User=$NEW
@@ -1377,7 +2630,7 @@ EOF
 grep -rl "$OLD" /etc/sddm.conf.d/ 2>/dev/null | while read -r f; do sed -i "s/\b$OLD\b/$NEW/g" "$f"; done
 cat /etc/sddm.conf.d/20-autologin.conf
 
-log "4/10 credenciales y claves"
+log "$(msg sanitize_step4)"
 rm -rf "/home/$NEW/.ssh"
 rm -f /etc/ssh/ssh_host_*        # se regeneran solas en el primer arranque
 systemctl disable sshd.service 2>/dev/null || true
@@ -1386,7 +2639,7 @@ rm -f /etc/sudoers.d/99-fix /etc/sudoers.d/99-install
 rm -rf "/home/$NEW/.gnupg" "/home/$NEW/.local/share/keyrings" "/home/$NEW/.password-store"
 echo "  sshd: $(systemctl is-enabled sshd 2>&1)"
 
-log "5/10 identidad de la maquina"
+log "$(msg sanitize_step5)"
 : > /etc/machine-id
 rm -f /var/lib/dbus/machine-id
 ln -sf /etc/machine-id /var/lib/dbus/machine-id
@@ -1397,7 +2650,7 @@ cat > /etc/hosts <<'EOF'
 127.0.1.1   omarchy.localdomain omarchy
 EOF
 
-log "6/10 identidad personal (git, historiales, cache)"
+log "$(msg sanitize_step6)"
 rm -f "/home/$NEW/.gitconfig" "/home/$NEW/.config/git/config"
 rm -f "/home/$NEW/.bash_history" "/home/$NEW/.zsh_history" "/home/$NEW/.local/share/fish/fish_history"
 rm -rf "/home/$NEW/.cache" "/home/$NEW/.local/state/omarchy/first-run.log"
@@ -1406,15 +2659,15 @@ rm -rf "/home/$NEW/shots" "/home/$NEW"/*.sh "/home/$NEW/config.env" 2>/dev/null 
 # NetworkManager: quita redes wifi guardadas
 rm -f /etc/NetworkManager/system-connections/* 2>/dev/null || true
 
-log "7b/10 apps propietarias fuera de la imagen distribuible"
+log "$(msg sanitize_step7b)"
 # Estas se instalan con omarchy-arm-extras en la maquina del usuario final.
 # Empaquetarlas en un .zip que se reparte seria redistribuir binarios de
 # terceros, asi que se retiran aunque estuvieran en la VM de origen.
 for pkg in 1password 1password-cli typora localsend-bin google-chrome obsidian-bin; do
-  pacman -Q "$pkg" >/dev/null 2>&1 && { pacman -Rns --noconfirm "$pkg" >/dev/null 2>&1 && echo "  retirado $pkg"; }
+  pacman -Q "$pkg" >/dev/null 2>&1 && { pacman -Rns --noconfirm "$pkg" >/dev/null 2>&1 && echo "  $(msg sanitize_removed "$pkg")"; }
 done
 for d in /opt/1Password /opt/obsidian /opt/typora; do
-  [ -e "$d" ] && { rm -rf "$d"; echo "  retirado $d"; }
+  [ -e "$d" ] && { rm -rf "$d"; echo "  $(msg sanitize_removed_path "$d")"; }
 done
 rm -f /usr/local/bin/obsidian /usr/local/share/applications/obsidian.desktop 2>/dev/null || true
 # Retirar /opt/1Password deja sus enlaces de /usr/bin apuntando al vacio. Es el
@@ -1422,7 +2675,7 @@ rm -f /usr/local/bin/obsidian /usr/local/share/applications/obsidian.desktop 2>/
 for l in $(find /usr/bin /usr/local/bin -maxdepth 1 -xtype l 2>/dev/null); do
   case "$(readlink "$l")" in
     /opt/1Password/*|/opt/obsidian/*|/opt/typora/*)
-      rm -f "$l"; echo "  enlace colgado retirado: $l" ;;
+      rm -f "$l"; echo "  $(msg sanitize_broken_link_removed "$l")" ;;
   esac
 done
 # Los rastros que dejan al instalarse: si se retira Chrome hay que retirar
@@ -1432,14 +2685,14 @@ BIND="/home/$NEW/.config/hypr/bindings.lua"
 if [ -f "$BIND" ] && grep -q "open.spotify.com" "$BIND"; then
   sed -i '/^-- Spotify no tiene cliente nativo/,/^o.bind("SUPER + SHIFT + M", "Spotify"/d' "$BIND"
   sed -i '/open\.spotify\.com/d' "$BIND"
-  echo "  retirado el atajo SUPER+SHIFT+M de la webapp de Spotify"
+  echo "  $(msg sanitize_spotify_binding_removed)"
 fi
 rm -f "/home/$NEW/.local/share/applications/Spotify.desktop" \
       "/home/$NEW/.local/share/applications/spotify.desktop" 2>/dev/null || true
 rm -rf "/home/$NEW/.local/share/omarchy/webapps" 2>/dev/null || true
-echo "  (se reinstalan con: omarchy-arm-extras)"
+echo "  ($(msg sanitize_reinstall_with))"
 
-log "7c/10 adelgazando: lo que solo hacia falta para compilar"
+log "$(msg sanitize_step7c)"
 # Compilar las herramientas deja detras cadenas de compilacion enteras (el SDK
 # de .NET son 425 MiB) y toolchains de Rust y Go en el home. Nada de eso hace
 # falta para usar la imagen, y se lleva ~2 GB del zip.
@@ -1458,9 +2711,9 @@ rm -f  /usr/local/bin/walker
 orph=$(pacman -Qdtq 2>/dev/null | tr '\n' ' ')
 [ -n "${orph// /}" ] && { echo "  huerfanos: $orph"; pacman -Rns --noconfirm $orph >/dev/null 2>&1; }
 rm -rf "/home/$NEW/.cargo" "/home/$NEW/go" "/home/$NEW/.rustup" "/home/$NEW/.npm" 2>/dev/null
-echo "  imprescindibles que deben seguir: $(for p in hyprland quickshell sddm; do printf '%s ' "$(pacman -Q $p 2>/dev/null || echo FALTA-$p)"; done)"
+echo "  $(msg sanitize_required): $(for p in hyprland quickshell sddm; do printf '%s ' "$(pacman -Q $p 2>/dev/null || echo "$(msg sanitize_missing_pkg "$p")")"; done)"
 
-log "7d/10 adelgazando: lo que no puede hacer falta en una VM"
+log "$(msg sanitize_step7d)"
 # Medido en una imagen real: 675 MiB de firmware para hardware que en una VM
 # QEMU con dispositivos virtio no puede existir. linux-firmware no se instala a
 # proposito, pero los splits por fabricante entran como dependencias.
@@ -1470,7 +2723,7 @@ if [ -n "${FW// /}" ]; then
   # -Rdd: los splits los reclama el metapaquete linux-firmware, que tampoco
   # hace falta. Si algo se opone, se deja como esta y no se rompe nada.
   pacman -Rdd --noconfirm $FW linux-firmware >/dev/null 2>&1 \
-    && echo "  retirados" || echo "  (no se pudieron retirar; se dejan)"
+    && echo "  $(msg sanitize_removed)" || echo "  $(msg sanitize_remove_failed)"
 fi
 # Documentacion y manuales: 469 MiB. Es una imagen para probar un escritorio,
 # no un servidor donde vayas a leer man. Los .md de Omarchy NO se tocan.
@@ -1478,9 +2731,9 @@ for d in /usr/share/doc /usr/share/man /usr/share/info /usr/share/gtk-doc; do
   [ -d "$d" ] && { echo "  $d: $(du -shx "$d" 2>/dev/null | cut -f1)"; rm -rf "$d"; }
 done
 mkdir -p /usr/share/man /usr/share/doc
-echo "  ocupacion tras el recorte: $(df -h / | awk 'NR==2{print $3}')"
+echo "  $(msg sanitize_usage_after_trim): $(df -h / | awk 'NR==2{print $3}')"
 
-log "7/10 logs y caches del sistema"
+log "$(msg sanitize_step7)"
 rm -rf /var/log/journal/* /var/log/omarchy* /var/log/pacman.log
 find /var/log -type f -name "*.log" -delete 2>/dev/null || true
 rm -rf /var/cache/pacman/pkg/* /var/tmp/* /tmp/* 2>/dev/null || true
@@ -1497,30 +2750,23 @@ rm -f /var/lib/systemd/random-seed /var/lib/systemd/credential.secret 2>/dev/nul
 : > /var/log/btmp 2>/dev/null || true
 : > /var/log/lastlog 2>/dev/null || true
 
-log "8/10 aviso al destinatario"
-cat > /etc/motd <<'EOF'
-
-  Omarchy sobre Arch Linux ARM (aarch64) — imagen para UTM en Apple Silicon
-
-  Usuario: omarchy   Contrasena: omarchy   (tambien para root)
-
-  >> CAMBIA LA CONTRASENA AHORA:  passwd
-
-  Teclas: la tecla Option (⌥) del Mac actua como SUPER.
-          ⌥+Space  menu de Omarchy      ⌥+Return  terminal
-
-  ¿Echas en falta 1Password, Obsidian, Typora, Spotify o LocalSend?
-  No vienen dentro por licencia, pero todas tienen build ARM64 oficial:
-
-      omarchy-arm-extras --list     ver que puede instalar
-      omarchy-arm-extras            menu interactivo
-
-EOF
+log "$(msg sanitize_step8)"
+{
+  printf '%s\n' "$(msg sanitize_motd_title)"
+  printf '%s\n' "$(msg sanitize_motd_credentials "$NEW" "$NEW")"
+  printf '%s\n' "$(msg sanitize_motd_change_password)"
+  printf '%s\n' "$(msg sanitize_motd_keys)"
+  printf '%s\n' "$(msg sanitize_motd_shortcuts)"
+  printf '%s\n' "$(msg sanitize_motd_missing_apps)"
+  printf '%s\n' "$(msg sanitize_motd_license)"
+  printf '%s\n' "$(msg sanitize_motd_extras_list)"
+  printf '%s\n' "$(msg sanitize_motd_extras_menu)"
+} > /etc/motd
 install -d -o "$NEW" -g "$NEW" "/home/$NEW/Desktop"
 cp /etc/motd "/home/$NEW/Desktop/LEEME.txt"
 chown "$NEW:$NEW" "/home/$NEW/Desktop/LEEME.txt"
 
-log "8a/10 hook de actualizacion para ARM"
+log "$(msg sanitize_step8a)"
 # omarchy-update-dev no actualiza el arbol cuando OMARCHY_PATH es
 # /usr/share/omarchy, que es nuestro caso: sin este hook Omarchy se congela.
 if [ -f /root/prov/10-arm-sync ]; then
@@ -1533,7 +2779,7 @@ git -C /usr/share/omarchy config core.fileMode false 2>/dev/null || true
 git -C /usr/share/omarchy checkout -- . 2>/dev/null || true
 echo "  checkout limpio: $(git -C /usr/share/omarchy status --porcelain 2>/dev/null | wc -l) ficheros"
 
-log "8b/10 instalador de apps opcionales"
+log "$(msg sanitize_step8b)"
 # repair.sh copia extras.sh como omarchy-arm-extras, pero si esa copia no
 # ocurriera el bloque entero se saltaba en silencio y la imagen salia sin la
 # entrada de menu. Se aceptan los dos nombres y se avisa si falta.
@@ -1545,7 +2791,7 @@ if [ -n "$EXTRAS_SRC" ]; then
   install -Dm755 "$EXTRAS_SRC" /usr/local/bin/omarchy-arm-extras
   install -Dm644 /dev/stdin /usr/local/share/applications/omarchy-arm-extras.desktop <<'DESK'
 [Desktop Entry]
-Name=Instalar apps que faltan (ARM)
+Name=$(msg desktop_name)
 Comment=1Password, Obsidian, Typora, LocalSend, Chrome, OBS, Pinta
 Exec=xdg-terminal-exec omarchy-arm-extras
 Icon=system-software-install
@@ -1554,58 +2800,58 @@ Type=Application
 Categories=System;PackageManager;
 DESK
   chown "$NEW:$NEW" /usr/local/share/applications/omarchy-arm-extras.desktop 2>/dev/null || true
-  echo "  /usr/local/bin/omarchy-arm-extras + entrada en el menu"
+  echo "  $(msg sanitize_extras_ready)"
 else
-  warn "el instalador de apps opcionales no venia en el ISO: la imagen saldra sin el"
+  warn "$(msg sanitize_extras_missing)"
 fi
 
-log "9/10 comprobando que nada quedo atado a $OLD"
-echo "  referencias en /etc:"; grep -rl "\b$OLD\b" /etc 2>/dev/null | head -5 || echo "    ninguna"
-echo "  home:"; ls -ld "/home/$NEW"; ls /home/
-echo "  propietario de ficheros sueltos:"; find /home/$NEW -maxdepth 2 ! -user "$NEW" 2>/dev/null | head -3 || echo "    todo correcto"
+log "$(msg sanitize_step9 "$OLD")"
+echo "  $(msg sanitize_refs_etc):"; grep -rl "\b$OLD\b" /etc 2>/dev/null | head -5 || echo "    $(msg sanitize_none)"
+echo "  $(msg sanitize_home):"; ls -ld "/home/$NEW"; ls /home/
+echo "  $(msg sanitize_loose_files):"; find /home/$NEW -maxdepth 2 ! -user "$NEW" 2>/dev/null | head -3 || echo "    $(msg sanitize_all_ok)"
 
-log "10/10 liberando espacio no usado (para que comprima mejor)"
+log "$(msg sanitize_step10)"
 sync
 fstrim -av 2>&1 | head -3 || true
 echo ""
-log "ficheros de respaldo de usermod (contienen el usuario y el hash antiguos)"
+log "$(msg sanitize_backups)"
 rm -f /etc/passwd- /etc/shadow- /etc/group- /etc/gshadow-
-log "subuid/subgid"
+log "$(msg sanitize_subid)"
 sed -i "s/^$OLD:/$NEW:/" /etc/subuid /etc/subgid 2>/dev/null || true
 cat /etc/subuid /etc/subgid 2>/dev/null
 
-log "barrido final de referencias a $OLD"
-echo "  /etc:"; grep -rl "\b$OLD\b" /etc 2>/dev/null || echo "    ninguna"
-echo "  /home:"; grep -rl "\b$OLD\b" /home/$NEW/.config /home/$NEW/.bashrc 2>/dev/null | head -5 || echo "    ninguna"
-echo "  /usr/local/bin:"; grep -rl "\b$OLD\b" /usr/local/bin 2>/dev/null | head -5 || echo "    ninguna"
-echo "  enlaces rotos en /usr/bin: $(find /usr/bin -xtype l 2>/dev/null | wc -l)"
-echo "  /usr/share/omarchy (no debe apuntar a /home):"; ls -ld /usr/share/omarchy
+log "$(msg sanitize_final_scan "$OLD")"
+echo "  /etc:"; grep -rl "\b$OLD\b" /etc 2>/dev/null || echo "    $(msg sanitize_none)"
+echo "  /home:"; grep -rl "\b$OLD\b" /home/$NEW/.config /home/$NEW/.bashrc 2>/dev/null | head -5 || echo "    $(msg sanitize_none)"
+echo "  /usr/local/bin:"; grep -rl "\b$OLD\b" /usr/local/bin 2>/dev/null | head -5 || echo "    $(msg sanitize_none)"
+echo "  $(msg sanitize_broken_usr_bin): $(find /usr/bin -xtype l 2>/dev/null | wc -l)"
+echo "  $(msg sanitize_omarchy_path):"; ls -ld /usr/share/omarchy
 
-log "coherencia del sistema"
+log "$(msg sanitize_consistency)"
 echo "  passwd: $(getent passwd $NEW)"
 echo "  home:   $(ls -ld /home/$NEW | awk '{print $3, $4, $9}')"
 echo "  symlink omarchy: $(readlink /home/$NEW/.local/share/omarchy)"
 echo "  autologin: $(grep -h User= /etc/sddm.conf.d/*.conf 2>/dev/null | tr '\n' ' ')"
-echo "  binarios omarchy: $(ls /usr/bin | grep -c '^omarchy-') en /usr/bin"
-echo "  ttfx: $(command -v ttfx || echo NO)"
+echo "  $(msg sanitize_binaries): $(ls /usr/bin | grep -c '^omarchy-') $(msg sanitize_in_usr_bin)"
+echo "  ttfx: $(command -v ttfx || echo "$(msg sanitize_no)")"
 echo "  migraciones selladas: $(ls -1 /home/$NEW/.local/state/omarchy/migrations 2>/dev/null | wc -l)"
 sync
 echo ""
-log "marcadores de Nautilus/GTK apuntando al home antiguo"
+log "$(msg sanitize_bookmarks)"
 for f in /home/$NEW/.config/gtk-3.0/bookmarks /home/$NEW/.config/gtk-4.0/bookmarks; do
   [ -f "$f" ] && { sed -i "s#/home/$OLD#/home/$NEW#g" "$f"; echo "  $f:"; cat "$f"; }
 done
 
-log "nombre real en passwd (aparece en el greeter)"
+log "$(msg sanitize_real_name)"
 chfn -f "Omarchy" "$NEW" 2>/dev/null || usermod -c "Omarchy" "$NEW"
 getent passwd "$NEW"
 
-log "user-dirs con rutas absolutas"
+log "$(msg sanitize_user_dirs)"
 for f in /home/$NEW/.config/user-dirs.dirs; do
   [ -f "$f" ] && sed -i "s#/home/$OLD#/home/$NEW#g" "$f"
 done
 
-log "symlinks que apuntan al home antiguo"
+log "$(msg sanitize_symlinks)"
 # grep -rl solo mira el CONTENIDO de los ficheros: el destino de un enlace
 # simbolico no es contenido, asi que el barrido de texto los da por limpios.
 # Omarchy guarda el tema y el fondo activos como enlaces
@@ -1622,31 +2868,30 @@ for l in "${BADLINKS[@]:-}"; do
 done
 chown -h $NEW:$NEW "${BADLINKS[@]:-/home/$NEW}" 2>/dev/null || true
 
-log "barrido final"
-echo "  /etc:   $(grep -rl "\b$OLD\b" /etc 2>/dev/null | wc -l) coincidencias"
-echo "  /home:  $(grep -rl "\b$OLD\b" /home/$NEW/.config /home/$NEW/.bashrc /home/$NEW/.bash_profile 2>/dev/null | wc -l) coincidencias"
-echo "  enlaces a /home/$OLD: $(find /home/$NEW /etc /usr/bin /usr/local /opt -xdev -type l -lname "*/home/$OLD/*" 2>/dev/null | wc -l)"
-echo "  enlaces rotos en el home: $(find /home/$NEW -xdev -type l ! -exec test -e {} \; -print 2>/dev/null | wc -l)"
-echo "  enlaces rotos en /usr/bin: $(find /usr/bin -xtype l 2>/dev/null | wc -l)"
-echo "  fondo activo: $(readlink -f /home/$NEW/.local/state/omarchy/current/background 2>/dev/null || echo NINGUNO)"
+log "$(msg sanitize_final_check)"
+echo "  /etc:   $(grep -rl "\b$OLD\b" /etc 2>/dev/null | wc -l) $(msg sanitize_matches)"
+echo "  /home:  $(grep -rl "\b$OLD\b" /home/$NEW/.config /home/$NEW/.bashrc /home/$NEW/.bash_profile 2>/dev/null | wc -l) $(msg sanitize_matches)"
+echo "  $(msg sanitize_links_old "$OLD"): $(find /home/$NEW /etc /usr/bin /usr/local /opt -xdev -type l -lname "*/home/$OLD/*" 2>/dev/null | wc -l)"
+echo "  $(msg sanitize_broken_home): $(find /home/$NEW -xdev -type l ! -exec test -e {} \; -print 2>/dev/null | wc -l)"
+echo "  $(msg sanitize_broken_usr_bin): $(find /usr/bin -xtype l 2>/dev/null | wc -l)"
+echo "  $(msg sanitize_active_background): $(readlink -f /home/$NEW/.local/state/omarchy/current/background 2>/dev/null || echo "$(msg sanitize_none_upper)")"
 test -e "/home/$NEW/.local/state/omarchy/current/background" \
-  && echo "  fondo resuelve: OK" || echo "  fondo resuelve: ROTO"
-echo "  (nota: /usr/local/bin/ttfx contiene la ruta de compilacion en su info de"
-echo "   depuracion; es inocuo y no expone nada util)"
+  && echo "  $(msg sanitize_background_resolves): $(msg sanitize_ok)" || echo "  $(msg sanitize_background_resolves): $(msg sanitize_broken)"
+echo "  ($(msg sanitize_ttfx_note))"
 
-log "estado final para distribuir"
-echo "  usuario:    $(getent passwd $NEW | cut -d: -f1,5,6)"
+log "$(msg sanitize_distribution_state)"
+echo "  $(msg sanitize_user_label): $(getent passwd $NEW | cut -d: -f1,5,6)"
 echo "  autologin:  $(grep -h User= /etc/sddm.conf.d/*.conf 2>/dev/null | sort -u | tr '\n' ' ')"
 echo "  sshd:       $(systemctl is-enabled sshd 2>&1)"
-echo "  instalador opcional: $(test -x /usr/local/bin/omarchy-arm-extras && echo si || echo FALTA)"
-echo "  entrada de menu:     $(test -f /usr/local/share/applications/omarchy-arm-extras.desktop && echo si || echo FALTA)"
+echo "  $(msg sanitize_optional_installer): $(test -x /usr/local/bin/omarchy-arm-extras && msg sanitize_yes || msg sanitize_missing)"
+echo "  $(msg sanitize_menu_entry):     $(test -f /usr/local/share/applications/omarchy-arm-extras.desktop && msg sanitize_yes || msg sanitize_missing)"
 echo "  machine-id: $(wc -c < /etc/machine-id) bytes (vacio = se regenera)"
 echo ""
-echo "  AVISO: a partir de aqui la imagen no debe volver a arrancarse. El primer"
-echo "  arranque regenera machine-id, semilla de aleatoriedad y logs, y esos"
-echo "  quedarian identicos en todas las copias distribuidas. Si hay que"
-echo "  arrancarla para verificar algo, repite esta fase despues."
-echo "  claves ssh host: $(ls /etc/ssh/ssh_host_* 2>/dev/null | wc -l) (0 = se regeneran)"
+echo "  $(msg sanitize_do_not_boot_1)"
+echo "  $(msg sanitize_do_not_boot_2)"
+echo "  $(msg sanitize_do_not_boot_3)"
+echo "  $(msg sanitize_do_not_boot_4)"
+echo "  $(msg sanitize_host_keys): $(ls /etc/ssh/ssh_host_* 2>/dev/null | wc -l) (0 = $(msg sanitize_regenerated))"
 echo "  hostname:   $(cat /etc/hostname)"
 sync
 fstrim -av 2>&1 | head -2 || true
@@ -1678,6 +2923,17 @@ cat > "$W/provision/extras.sh" <<'__PAYLOAD_PROVISION_EXTRAS_SH__'
 #
 set -uo pipefail
 
+if [ -z "${OMARCHY_LANG+x}" ] && [ -r /etc/omarchy-arm-language ]; then
+  OMARCHY_LANG=$(cat /etc/omarchy-arm-language)
+fi
+export OMARCHY_LANG
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /usr/local/share/omarchy/catalog.sh /root/prov/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
+
 c_ok=$'\033[32m'; c_warn=$'\033[33m'; c_err=$'\033[31m'; c_hi=$'\033[1;36m'; c_dim=$'\033[2m'; c_off=$'\033[0m'
 title() { echo; echo "${c_hi}━━━ $* ━━━${c_off}"; }
 info()  { echo "  $*"; }
@@ -1693,20 +2949,32 @@ OK_LIST=(); KO_LIST=()
 # ── catalogo ────────────────────────────────────────────────────────────────
 #  clave|titulo|descripcion
 CATALOG=(
-  "1password|1Password|Gestor de contrasenas. Tarball arm64 oficial de AgileBits"
-  "1password-cli|1Password CLI|El comando op. Binario estatico arm64 oficial"
-  "obsidian|Obsidian|Notas en markdown. AppImage arm64 oficial"
-  "typora|Typora|Editor markdown WYSIWYG. Paquete arm64 oficial via AUR"
-  "localsend|LocalSend|Enviar ficheros entre dispositivos. Build arm64 oficial"
-  "chrome|Google Chrome|Trae Widevine para arm64: habilita Spotify y Netflix web"
-  "spotify-web|Spotify (webapp)|Lanzador de open.spotify.com + reasigna SUPER+SHIFT+M"
-  "pinta|Pinta|Editor de imagenes. Compilado con el .NET arm64 de Microsoft"
-  "obs|OBS Studio|Captura y streaming. Compilado sin el plugin de navegador"
+  "1password|app_1password|app_1password_desc"
+  "1password-cli|app_1password_cli|app_1password_cli_desc"
+  "obsidian|app_obsidian|app_obsidian_desc"
+  "typora|app_typora|app_typora_desc"
+  "localsend|app_localsend|app_localsend_desc"
+  "chrome|app_chrome|app_chrome_desc"
+  "spotify-web|app_spotify|app_spotify_desc"
+  "pinta|app_pinta|app_pinta_desc"
+  "obs|app_obs|app_obs_desc"
 )
 
 catalog_keys()  { printf '%s\n' "${CATALOG[@]}" | cut -d'|' -f1; }
-catalog_title() { printf '%s\n' "${CATALOG[@]}" | awk -F'|' -v k="$1" '$1==k{print $2}'; }
-catalog_desc()  { printf '%s\n' "${CATALOG[@]}" | awk -F'|' -v k="$1" '$1==k{print $3}'; }
+catalog_title() { local k; k=$(printf '%s\n' "${CATALOG[@]}" | awk -F'|' -v k="$1" '$1==k{print $2}'); msg "$k"; }
+catalog_desc()  { local k; k=$(printf '%s\n' "${CATALOG[@]}" | awk -F'|' -v k="$1" '$1==k{print $3}'); msg "$k"; }
+
+usage() {
+  cat <<EOF
+$(msg extras_help_title)
+
+  omarchy-arm-extras                    $(msg extras_help_menu)
+  omarchy-arm-extras --list             $(msg extras_help_list)
+  omarchy-arm-extras 1password obsidian $(msg extras_help_specific)
+  omarchy-arm-extras --all              $(msg extras_help_all)
+  omarchy-arm-extras --force <key>      $(msg extras_help_force)
+EOF
+}
 
 # ── utilidades ──────────────────────────────────────────────────────────────
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -1731,8 +2999,8 @@ is_installed() {
 
 need_sudo() {
   sudo -n true 2>/dev/null && return 0
-  info "Se necesita sudo para instalar paquetes."
-  sudo -v || { fail "sin privilegios"; return 1; }
+  info "$(msg extras_need_sudo)"
+  sudo -v || { fail "$(msg extras_no_privileges)"; return 1; }
 }
 
 # Construye un paquete de AUR resolviendo las trampas habituales en ARM:
@@ -1744,7 +3012,7 @@ aur_build() {
   # $pkg no existiria al construir $dir y con set -u el script aborta.
   local pkg="$1" want="${2:-$1}"
   local dir="$WORK/$pkg" base
-  pacman -Q "$want" >/dev/null 2>&1 && { ok "$want ya instalado"; return 0; }
+  pacman -Q "$want" >/dev/null 2>&1 && { ok "$(msg extras_already_installed "$want")"; return 0; }
 
   base=$(curl -fsSL --max-time 20 "https://aur.archlinux.org/rpc/v5/info?arg[]=$pkg" \
          | sed -n 's/.*"PackageBase":"\([^"]*\)".*/\1/p' | head -1)
@@ -1752,7 +3020,7 @@ aur_build() {
 
   rm -rf "$dir"; mkdir -p "$WORK"
   git clone -q "https://aur.archlinux.org/$base.git" "$dir" 2>/dev/null
-  [ -f "$dir/PKGBUILD" ] || { fail "no se pudo clonar $pkg (base: $base)"; return 1; }
+  [ -f "$dir/PKGBUILD" ] || { fail "$(msg extras_clone_failed "$pkg" "$base")"; return 1; }
 
   # Varios PKGBUILD verifican la firma del upstream en check(). Si la clave no
   # esta en el llavero, makepkg aborta. Se importan las que el propio PKGBUILD
@@ -1762,19 +3030,19 @@ aur_build() {
   for k in $keys; do
     [ ${#k} -ge 16 ] || continue
     gpg --list-keys "$k" >/dev/null 2>&1 && continue
-    info "importando clave GPG ${k: -8}"
+    info "$(msg extras_import_key "${k: -8}")"
     gpg --keyserver keyserver.ubuntu.com --recv-keys "$k" >/dev/null 2>&1 \
       || gpg --keyserver keys.openpgp.org --recv-keys "$k" >/dev/null 2>&1 \
-      || warn "no pude importar ${k: -8}: la verificación de firma fallará"
+      || warn "$(msg extras_key_failed "${k: -8}")"
   done
 
   if ! grep -qE "^arch=\(.*\b(aarch64|any)\b" "$dir/PKGBUILD"; then
     sed -i "s/^arch=(\(.*\))/arch=(\1 'aarch64')/" "$dir/PKGBUILD"
-    info "arch= parcheado para incluir aarch64"
+    info "$(msg extras_arch_patched)"
   fi
 
   ( cd "$dir" && makepkg -si --noconfirm --needed --noprogressbar ) >"$dir/build.log" 2>&1 && return 0
-  fail "falló la compilación de $pkg — log: $dir/build.log"
+  fail "$(msg extras_build_failed "$pkg" "$dir/build.log")"
   tail -5 "$dir/build.log" | sed 's/^/      /'
   return 1
 }
@@ -1783,10 +3051,10 @@ aur_build() {
 
 do_1password() {
   title "1Password"
-  info "AgileBits publica arm64 SOLO como tarball: no hay .deb ni .rpm para esta arquitectura."
+  info "$(msg extras_1password_info)"
   local url=https://downloads.1password.com/linux/tar/stable/aarch64/1password-latest.tar.gz
   mkdir -p "$WORK"; rm -rf "$WORK/1p"; mkdir -p "$WORK/1p"
-  curl -fL --progress-bar "$url" -o "$WORK/1p/1p.tar.gz" || { fail "descarga fallida"; return 1; }
+  curl -fL --progress-bar "$url" -o "$WORK/1p/1p.tar.gz" || { fail "$(msg extras_download_failed)"; return 1; }
   # Es un gestor de contrasenas: se verifica la firma antes de instalarlo.
   local KEY=3FEF9748469ADBE15DA7CA80AC2D62742012EA22
   if curl -fsSL "$url.sig" -o "$WORK/1p/1p.tar.gz.sig" 2>/dev/null; then
@@ -1794,39 +3062,39 @@ do_1password() {
       || gpg --keyserver keyserver.ubuntu.com --recv-keys "$KEY" >/dev/null 2>&1 \
       || gpg --keyserver keys.openpgp.org --recv-keys "$KEY" >/dev/null 2>&1
     if gpg --verify "$WORK/1p/1p.tar.gz.sig" "$WORK/1p/1p.tar.gz" >/dev/null 2>&1; then
-      ok "firma GPG de AgileBits verificada"
+      ok "$(msg extras_signature_ok)"
     else
-      fail "LA FIRMA NO VERIFICA — se aborta la instalación"; return 1
+      fail "$(msg extras_signature_bad)"; return 1
     fi
   else
-    warn "no hay .sig disponible; se instala sin verificar la firma"
+    warn "$(msg extras_signature_missing)"
   fi
-  tar -xzf "$WORK/1p/1p.tar.gz" -C "$WORK/1p" || { fail "no se pudo extraer"; return 1; }
+  tar -xzf "$WORK/1p/1p.tar.gz" -C "$WORK/1p" || { fail "$(msg extras_extract_failed)"; return 1; }
   local src; src=$(find "$WORK/1p" -maxdepth 1 -type d -name '1password-*' | head -1)
-  [ -n "$src" ] || { fail "el tarball no tiene la forma esperada"; return 1; }
+  [ -n "$src" ] || { fail "$(msg extras_archive_invalid)"; return 1; }
   sudo mkdir -p /opt/1Password
   sudo cp -a "$src"/. /opt/1Password/
-  ( cd /opt/1Password && sudo ./after-install.sh ) >/dev/null 2>&1 || warn "after-install.sh dio errores (suele ser inocuo)"
-  have 1password && ok "$(1password --version 2>/dev/null | head -1 || echo instalado)" || { fail "no quedó en el PATH"; return 1; }
-  info "${c_dim}En Hyprland conviene lanzarlo con --ozone-platform=wayland${c_off}"
+  ( cd /opt/1Password && sudo ./after-install.sh ) >/dev/null 2>&1 || warn "$(msg extras_postinstall_warning)"
+  have 1password && ok "$(1password --version 2>/dev/null | head -1 || msg extras_installed)" || { fail "$(msg extras_not_in_path)"; return 1; }
+  info "${c_dim}$(msg extras_wayland_hint)${c_off}"
 }
 
 do_1password_cli() { title "1Password CLI"; aur_build 1password-cli && ok "$(op --version 2>/dev/null)"; }
 
 do_obsidian() {
   title "Obsidian"
-  info "Hay AppImage y tarball arm64 oficiales. Se usa el tarball: no depende de fuse2."
+  info "$(msg extras_obsidian_info)"
   # OJO: releases/latest puede ser una release SOLO de Android (un .apk suelto).
   # Hay que buscar la ultima que publique de verdad el tarball arm64 de escritorio.
   local url
   url=$(curl -fsSL --max-time 30 "https://api.github.com/repos/obsidianmd/obsidian-releases/releases?per_page=15" \
         | grep -oE '"browser_download_url": *"[^"]*obsidian-[0-9.]+-arm64\.tar\.gz"' \
         | head -1 | sed 's/.*"\(https[^"]*\)"/\1/')
-  [ -n "$url" ] || { fail "no encontré ningún tarball arm64 en los últimos releases"; return 1; }
+  [ -n "$url" ] || { fail "$(msg extras_obsidian_missing)"; return 1; }
   info "$(basename "$url")"
-  mkdir -p "$WORK"; curl -fL --progress-bar "$url" -o "$WORK/obsidian.tar.gz" || { fail "descarga fallida"; return 1; }
+  mkdir -p "$WORK"; curl -fL --progress-bar "$url" -o "$WORK/obsidian.tar.gz" || { fail "$(msg extras_download_failed)"; return 1; }
   sudo rm -rf /opt/obsidian; sudo mkdir -p /opt/obsidian
-  sudo tar -xzf "$WORK/obsidian.tar.gz" -C /opt/obsidian --strip-components=1 || { fail "no se pudo extraer"; return 1; }
+  sudo tar -xzf "$WORK/obsidian.tar.gz" -C /opt/obsidian --strip-components=1 || { fail "$(msg extras_extract_failed)"; return 1; }
   sudo ln -sfn /opt/obsidian/obsidian /usr/local/bin/obsidian
   sudo install -Dm644 /dev/stdin /usr/local/share/applications/obsidian.desktop <<'DESK'
 [Desktop Entry]
@@ -1839,12 +3107,12 @@ MimeType=x-scheme-handler/obsidian;
 DESK
   [ -f /opt/obsidian/resources/app.asar ] && sudo find /opt/obsidian -name 'icon.png' -exec \
     sudo install -Dm644 {} /usr/local/share/icons/hicolor/512x512/apps/obsidian.png \; 2>/dev/null
-  ok "Obsidian instalado en /opt/obsidian ($(basename "$url"))"
+  ok "$(msg extras_obsidian_ok "$(basename "$url")")"
 }
 
 do_typora() {
   title "Typora"
-  info "El paquete AUR 'typora' baja el .deb arm64 oficial. No uses typora-electron: pide electron42, que no existe en ARM."
+  info "$(msg extras_typora_info)"
   aur_build typora && ok "$(pacman -Q typora)"
 }
 
@@ -1852,11 +3120,11 @@ do_localsend() { title "LocalSend"; aur_build localsend-bin localsend-bin && ok 
 
 do_chrome() {
   title "Google Chrome"
-  info "Chrome arm64 incluye Widevine (el DRM que exigen Spotify y Netflix web)."
-  info "Chromium de los repos NO lo trae, y el paquete chromium-widevine es solo x86_64."
+  info "$(msg extras_chrome_info)"
+  info "$(msg extras_chromium_info)"
   aur_build google-chrome || return 1
   ok "$(pacman -Q google-chrome)"
-  info "${c_dim}Comprueba el DRM en chrome://components → 'Widevine Content Decryption Module'${c_off}"
+  info "${c_dim}$(msg extras_widevine_hint)${c_off}"
 }
 
 do_spotify_web() {
@@ -1864,15 +3132,15 @@ do_spotify_web() {
   # Omarchy trata Spotify como paquete nativo, no como webapp — y ese paquete es
   # x86_64. En ARM la via que funciona es la web, que necesita Widevine.
   if ! have google-chrome-stable; then
-    warn "sin Google Chrome la web de Spotify no reproducirá: instala antes 'chrome'"
+    warn "$(msg extras_spotify_chrome_required)"
   fi
   if have omarchy-webapp-install; then
     omarchy-webapp-install "Spotify" "https://open.spotify.com" \
       "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/spotify.png" \
       "$(have google-chrome-stable && echo 'google-chrome-stable --app=https://open.spotify.com')" \
-      >/dev/null 2>&1 && ok "lanzador creado en el menú de aplicaciones"
+      >/dev/null 2>&1 && ok "$(msg extras_launcher_ok)"
   else
-    warn "omarchy-webapp-install no está disponible"
+    warn "$(msg extras_webapp_missing)"
   fi
   # Reasignar SUPER+SHIFT+M, que en Omarchy apunta al binario nativo
   local f="$HOME/.config/hypr/bindings.lua"
@@ -1883,34 +3151,34 @@ do_spotify_web() {
 -- Necesita Google Chrome, que es quien trae Widevine en arm64.
 o.bind("SUPER + SHIFT + M", "Spotify", o.launch("google-chrome-stable --app=https://open.spotify.com"))
 LUA
-    ok "SUPER+SHIFT+M reasignado (reinicia la sesión para aplicarlo)"
+    ok "$(msg extras_spotify_binding_ok)"
   fi
-  info "${c_dim}Alternativa en terminal, ya instalada: spotify-player${c_off}"
+  info "${c_dim}$(msg extras_spotify_terminal)${c_off}"
 }
 
 do_pinta() {
   title "Pinta"
-  info "Microsoft sí publica .NET para linux-arm64; Arch solo lo empaqueta para x86_64."
-  info "Se instala el runtime desde el tarball oficial y luego el paquete de Pinta, que es arch=any."
-  aur_build dotnet-runtime-bin dotnet-runtime-bin || { fail "sin runtime .NET no se puede seguir"; return 1; }
+  info "$(msg extras_pinta_info)"
+  info "$(msg extras_pinta_install_info)"
+  aur_build dotnet-runtime-bin dotnet-runtime-bin || { fail "$(msg extras_pinta_runtime_missing)"; return 1; }
   local url=https://geo.mirror.pkgbuild.com/extra/os/x86_64/
   local file; file=$(curl -fsSL --max-time 30 "$url" | grep -o 'pinta-[0-9][^"]*-any\.pkg\.tar\.zst' | sort -V | tail -1)
-  [ -n "$file" ] || { fail "no encontré el paquete de Pinta"; return 1; }
-  info "$file  ${c_dim}(la ruta dice x86_64 pero el paquete es arch=any)${c_off}"
+  [ -n "$file" ] || { fail "$(msg extras_pinta_missing)"; return 1; }
+  info "$file  ${c_dim}($(msg extras_path_arch_any))${c_off}"
   mkdir -p "$WORK"; curl -fL --progress-bar "$url$file" -o "$WORK/$file" || return 1
-  sudo pacman -U --noconfirm "$WORK/$file" >/dev/null 2>&1 && ok "$(pacman -Q pinta)" || { fail "pacman -U falló"; return 1; }
-  warn "queda fuera del gestor de actualizaciones: cada versión hay que repetirla a mano"
+  sudo pacman -U --noconfirm "$WORK/$file" >/dev/null 2>&1 && ok "$(pacman -Q pinta)" || { fail "$(msg extras_pacman_failed)"; return 1; }
+  warn "$(msg extras_manual_updates)"
 }
 
 do_obs() {
   title "OBS Studio"
-  info "OBS compila bien en aarch64. Lo único que lo bloquea en Arch Linux ARM es el"
-  info "subpaquete del navegador, cuyo 'cef' solo existe para x86_64. Se desactiva."
-  warn "compilar Qt6 + OBS dentro de la VM lleva un buen rato"
+  info "$(msg extras_obs_info)"
+  info "$(msg extras_obs_browser_info)"
+  warn "$(msg extras_obs_slow)"
   local dir="$WORK/obs-studio"
   rm -rf "$dir"; mkdir -p "$WORK"
   git clone -q --depth 1 https://gitlab.archlinux.org/archlinux/packaging/packages/obs-studio.git "$dir" \
-    || { fail "no pude clonar el PKGBUILD de Arch"; return 1; }
+    || { fail "$(msg extras_arch_clone_failed)"; return 1; }
   cd "$dir" || return 1
   sed -i "s/^arch=(\(.*\))/arch=(\1 'aarch64')/" PKGBUILD
   # OJO: 'cef' va en la MISMA linea que makedepends=, no en una propia, asi que
@@ -1935,9 +3203,9 @@ do_obs() {
   info "PKGBUILD parcheado: aarch64, sin CEF, sin plugin de navegador"
   if makepkg -si --noconfirm --needed --noprogressbar >"$dir/build.log" 2>&1; then
     ok "$(pacman -Q obs-studio)"
-    info "${c_dim}Sin aceleración por hardware en la VM: codificará con x264 por CPU${c_off}"
+    info "${c_dim}$(msg extras_no_hw_accel)${c_off}"
   else
-    fail "falló la compilación — log: $dir/build.log"
+  fail "$(msg extras_build_failed_generic "$dir/build.log")"
     tail -6 "$dir/build.log" | sed 's/^/      /'
     return 1
   fi
@@ -1947,7 +3215,7 @@ run_item() {
   local k="$1"
   if [ "${FORCE:-0}" != "1" ] && is_installed "$k"; then
     title "$(catalog_title "$k")"
-    ok "ya viene instalada en esta imagen (--force para reinstalar)"
+    ok "$(msg extras_already_in_image)"
     return 0
   fi
   case "$k" in
@@ -1960,27 +3228,27 @@ run_item() {
     spotify-web)   do_spotify_web ;;
     pinta)         do_pinta ;;
     obs)           do_obs ;;
-    *) fail "no conozco '$k'"; return 1 ;;
+    *) fail "$(msg extras_unknown_key "$k")"; return 1 ;;
   esac
 }
 
 show_list() {
   echo
-  echo "${c_hi}Apps que se instalan desde su fuente oficial${c_off}"
-  echo "${c_dim}Las propietarias no vienen dentro a proposito: redistribuir sus binarios"
-  echo "en una imagen que se reparte seria problematico. Aqui se descargan en tu"
-  echo "maquina, del sitio del fabricante.${c_off}"
+  echo "${c_hi}$(msg extras_list_title)${c_off}"
+  echo "${c_dim}$(msg extras_list_explanation_1)"
+  echo "$(msg extras_list_explanation_2)"
+  echo "$(msg extras_list_explanation_3)${c_off}"
   echo
   local k
   while read -r k; do
     if is_installed "$k"; then
-      printf "  ${c_hi}%-15s${c_off} %s ${c_dim}[ya instalada]${c_off}\n" "$k" "$(catalog_desc "$k")"
+      printf "  ${c_hi}%-15s${c_off} %s ${c_dim}[%s]${c_off}\n" "$k" "$(catalog_desc "$k")" "$(msg extras_installed_marker)"
     else
       printf "  ${c_hi}%-15s${c_off} %s\n" "$k" "$(catalog_desc "$k")"
     fi
   done < <(catalog_keys)
   echo
-  echo "${c_dim}Uso: omarchy-arm-extras <clave> [clave...]   ·   --all para todo${c_off}"
+  echo "${c_dim}$(msg extras_usage)${c_off}"
   echo
 }
 
@@ -1991,13 +3259,13 @@ if [ "${1:-}" = "--force" ] || [ "${1:-}" = "-f" ]; then FORCE=1; shift; fi
 case "${1:-}" in
   --list|-l) show_list; exit 0 ;;
   --all|-a)  mapfile -t SELECTED < <(catalog_keys) ;;
-  -h|--help) sed -n '3,20p' "$0" | sed 's/^#\{0,2\} \{0,1\}//'; exit 0 ;;
+  -h|--help) usage; exit 0 ;;
   "")
     if have gum; then
       show_list
       mapfile -t SELECTED < <(
         while read -r k; do printf '%s — %s\n' "$k" "$(catalog_title "$k")"; done < <(catalog_keys) \
-        | gum choose --no-limit --header "Selecciona qué instalar (espacio marca, enter confirma)" \
+        | gum choose --no-limit --header "$(msg extras_choose_header)" \
         | cut -d' ' -f1
       )
     else
@@ -2006,7 +3274,7 @@ case "${1:-}" in
   *) SELECTED=("$@") ;;
 esac
 
-[ ${#SELECTED[@]} -gt 0 ] || { info "nada seleccionado"; exit 0; }
+[ ${#SELECTED[@]} -gt 0 ] || { info "$(msg extras_nothing_selected)"; exit 0; }
 
 need_sudo || exit 1
 mkdir -p "$WORK"
@@ -2016,13 +3284,13 @@ for k in "${SELECTED[@]}"; do
   if run_item "$k"; then OK_LIST+=("$k"); else KO_LIST+=("$k"); fi
 done
 
-title "Resumen"
-[ ${#OK_LIST[@]} -gt 0 ] && ok "instalado: ${OK_LIST[*]}"
+title "$(msg extras_summary)"
+[ ${#OK_LIST[@]} -gt 0 ] && ok "$(msg extras_installed_list "${OK_LIST[*]}")"
 if [ ${#KO_LIST[@]} -gt 0 ]; then
-  fail "falló: ${KO_LIST[*]}"
+  fail "$(msg extras_failed_list "${KO_LIST[*]}")"
   # No se borra el directorio de trabajo: dentro estan los build.log, que son
   # lo unico que permite averiguar por que fallo.
-  info "logs en $WORK/<paquete>/build.log"
+  info "$(msg extras_logs "$WORK/<package>/build.log")"
 else
   rm -rf "$WORK"
 fi
@@ -2042,6 +3310,16 @@ cat > "$W/provision/armsync.sh" <<'__PAYLOAD_PROVISION_ARMSYNC_SH__'
 # el sistema recibiria paquetes nuevos pero los scripts, temas y configuracion
 # de Omarchy se quedarian congelados en la version clonada.
 set -uo pipefail
+if [ -z "${OMARCHY_LANG+x}" ] && [ -r /etc/omarchy-arm-language ]; then
+  OMARCHY_LANG=$(cat /etc/omarchy-arm-language)
+fi
+export OMARCHY_LANG
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /usr/local/share/omarchy/catalog.sh /root/prov/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
 TREE=/usr/share/omarchy
 
 git -C "$TREE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
@@ -2049,14 +3327,14 @@ git -C "$TREE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 # El arbol puede ser del usuario (VM de desarrollo) o de root (imagen distribuida)
 if [ -w "$TREE/.git" ]; then GIT=(git -C "$TREE"); else GIT=(sudo git -C "$TREE"); fi
 
-echo -e "\e[32m\nActualizar el árbol de Omarchy (checkout git)\e[0m"
+echo -e "\e[32m\n$(msg armsync_title)\e[0m"
 before=$("${GIT[@]}" rev-parse --short HEAD 2>/dev/null)
 if ! "${GIT[@]}" pull --ff-only 2>&1 | sed 's/^/  /'; then
-  echo "  no se pudo hacer fast-forward; el árbol queda como estaba"
+  echo "  $(msg armsync_pull_failed)"
   exit 0
 fi
 after=$("${GIT[@]}" rev-parse --short HEAD 2>/dev/null)
-if [ "$before" = "$after" ]; then echo "  ya estaba al día ($after)"; exit 0; fi
+if [ "$before" = "$after" ]; then echo "  $(msg armsync_current "$after")"; exit 0; fi
 echo "  $before → $after"
 
 # Enlazar los binarios nuevos, respetando los envoltorios propios de ARM
@@ -2071,7 +3349,7 @@ for f in "$TREE"/bin/*; do
   # usuario que hace el sanitizador (ver stage3).
   sudo ln -sfn "/usr/share/omarchy/bin/$b" "$t" 2>/dev/null && n=$((n+1))
 done
-[ "$n" -gt 0 ] && echo "  $n binarios nuevos enlazados en /usr/bin"
+[ "$n" -gt 0 ] && echo "  $(msg armsync_linked "$n")"
 # Enlaces que apuntan a comandos ya retirados del arbol
 sudo find /usr/bin -xtype l -delete 2>/dev/null || true
 exit 0
@@ -2104,11 +3382,30 @@ cat > "$W/provision/clipbrd.sh" <<'__PAYLOAD_PROVISION_CLIPBRD_SH__'
 #
 set -uo pipefail
 
+if [ -z "${OMARCHY_LANG+x}" ] && [ -r /etc/omarchy-arm-language ]; then
+  OMARCHY_LANG=$(cat /etc/omarchy-arm-language)
+fi
+export OMARCHY_LANG
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /usr/local/share/omarchy/catalog.sh /root/prov/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
+
 SHARE="${OMARCHY_CLIPBOARD_DIR:-/mnt/share}"
 FILE="$SHARE/.clipboard"
 INTERVALO="${OMARCHY_CLIPBOARD_INTERVAL:-1}"
 
-uso() { sed -n '3,26p' "$0" | sed 's/^#\{0,2\} \{0,1\}//'; }
+uso() {
+  cat <<EOF
+$(msg clipboard_help_title)
+
+  omarchy-arm-clipboard             $(msg clipboard_help_watch)
+  omarchy-arm-clipboard --install   $(msg clipboard_help_install)
+  omarchy-arm-clipboard --host      $(msg clipboard_help_host)
+EOF
+}
 
 instalar() {
   mkdir -p ~/.config/systemd/user
@@ -2129,7 +3426,7 @@ RestartSec=5
 WantedBy=graphical-session.target
 UNIT
   systemctl --user daemon-reload
-  systemctl --user enable --now omarchy-arm-clipboard.service && echo "servicio activo"
+  systemctl --user enable --now omarchy-arm-clipboard.service && echo "$(msg clipboard_service_active)"
   systemctl --user --no-pager status omarchy-arm-clipboard.service | head -5
 }
 
@@ -2140,7 +3437,7 @@ script_anfitrion() {
 # carpeta que tengas compartida en los ajustes de la VM en UTM.
 #   ./clipboard-mac.sh ~/ruta/de/la/carpeta/compartida
 set -uo pipefail
-DIR="${1:?uso: $0 <carpeta compartida con la VM>}"
+  DIR="${1:?usage: $0 <shared folder with the VM>}"
 F="$DIR/.clipboard"
 mkdir -p "$DIR"; touch "$F"
 ultimo_local=""; ultimo_remoto="$(cat "$F" 2>/dev/null || true)"
@@ -2159,13 +3456,13 @@ MACEOF
 }
 
 vigilar() {
-  command -v wl-paste >/dev/null || { echo "falta wl-clipboard" >&2; exit 1; }
+  command -v wl-paste >/dev/null || { echo "$(msg clipboard_missing_package)" >&2; exit 1; }
   if [ ! -d "$SHARE" ]; then
-    echo "no hay carpeta compartida en $SHARE." >&2
-    echo "En UTM: Ajustes de la VM -> Compartir -> elige una carpeta, y reinicia." >&2
+    echo "$(msg clipboard_share_missing "$SHARE")" >&2
+    echo "$(msg clipboard_share_setup)" >&2
     exit 1
   fi
-  touch "$FILE" 2>/dev/null || { echo "no puedo escribir en $FILE" >&2; exit 1; }
+  touch "$FILE" 2>/dev/null || { echo "$(msg clipboard_write_failed "$FILE")" >&2; exit 1; }
   local ultimo_local ultimo_remoto actual remoto
   ultimo_local="$(wl-paste --no-newline 2>/dev/null || true)"
   ultimo_remoto="$(cat "$FILE" 2>/dev/null || true)"
@@ -2191,7 +3488,7 @@ case "${1:-}" in
   --host)    script_anfitrion ;;
   -h|--help) uso ;;
   "")        vigilar ;;
-  *)         echo "opcion desconocida: $1" >&2; uso >&2; exit 1 ;;
+  *)         echo "$(msg clipboard_unknown_option "$1")" >&2; uso >&2; exit 1 ;;
 esac
 __PAYLOAD_PROVISION_CLIPBRD_SH__
 chmod +x "$W/provision/clipbrd.sh"
@@ -2222,6 +3519,48 @@ PROTOCOLO (spice-protocol, spice/vd_agent.h)
     Solo texto UTF-8; ni imágenes ni ficheros.
 """
 import os, sys, struct, subprocess, threading, time, select, signal
+
+_lang = os.environ.get("OMARCHY_LANG")
+if _lang is None:
+    try:
+        with open("/etc/omarchy-arm-language", encoding="utf-8") as _f:
+            _lang = _f.read().strip()
+    except OSError:
+        _lang = None
+_LANG = "es" if _lang == "es" else "en"
+_MESSAGES = {
+    "missing_port": {
+        "en": "{port} does not exist.",
+        "es": "no existe {port}.",
+    },
+    "clipboard_setup": {
+        "en": "In UTM: VM Settings → Sharing → enable 'Share Clipboard'.",
+        "es": "En UTM: Ajustes de la VM → Compartir → activa 'Compartir portapapeles'.",
+    },
+    "missing_command": {
+        "en": "missing {cmd} (wl-clipboard package)",
+        "es": "falta {cmd} (paquete wl-clipboard)",
+    },
+    "port_closed": {
+        "en": "port closed: {error}",
+        "es": "puerto cerrado: {error}",
+    },
+    "capabilities": {
+        "en": "client capabilities: selection = {value}",
+        "es": "capacidades del cliente: selección = {value}",
+    },
+    "clipboard_received": {
+        "en": "received from host: {size} bytes",
+        "es": "recibido del anfitrión: {size} bytes",
+    },
+    "wl_copy_failed": {
+        "en": "wl-copy failed: {error}",
+        "es": "wl-copy falló: {error}",
+    },
+}
+
+def msg(key, **values):
+    return _MESSAGES[key][_LANG].format(**values)
 
 PUERTO = os.environ.get("VDAGENT_PORT", "/dev/virtio-ports/com.redhat.spice.0")
 
@@ -2303,7 +3642,7 @@ class Agente:
                 _puerto, tam = struct.unpack("<II", self._leer_exacto(8))
                 cuerpo = self._leer_exacto(tam)
             except (EOFError, OSError) as e:
-                log("puerto cerrado:", e); return
+                log(msg("port_closed", error=e)); return
             if len(cuerpo) < 20:
                 continue
             proto, tipo, _opaque, tam_datos = struct.unpack("<IIQI", cuerpo[:20])
@@ -2318,7 +3657,7 @@ class Agente:
             if len(datos) >= 8:
                 solicitar, caps = struct.unpack("<II", datos[:8])
                 self.usa_seleccion = bool(caps & (1 << CAP_CLIPBOARD_SELECTION))
-                log("capacidades del cliente: selección =", self.usa_seleccion)
+                log(msg("capabilities", value=self.usa_seleccion))
                 if solicitar:
                     self.anunciar_capacidades(solicitar=0)
 
@@ -2339,7 +3678,7 @@ class Agente:
                     texto = d[4:].decode("utf-8", "replace")
                     escribir_portapapeles(texto)
                     self.ultimo_local = texto
-                    log("recibido del anfitrión:", len(texto), "bytes")
+                    log(msg("clipboard_received", size=len(texto)))
 
         elif tipo == MSG_CLIPBOARD_RELEASE:
             pass
@@ -2361,7 +3700,7 @@ def escribir_portapapeles(texto):
         subprocess.run(["wl-copy", "--type", "text/plain;charset=utf-8"],
                        input=texto.encode("utf-8"), timeout=5)
     except Exception as e:
-        log("wl-copy falló:", e)
+        log(msg("wl_copy_failed", error=e))
 
 
 def vigilar_invitado(ag):
@@ -2377,14 +3716,13 @@ def vigilar_invitado(ag):
 
 def main():
     if not os.path.exists(PUERTO):
-        print(f"no existe {PUERTO}.", file=sys.stderr)
-        print("En UTM: Ajustes de la VM → Compartir → activa 'Compartir portapapeles'.",
-              file=sys.stderr)
+        print(msg("missing_port", port=PUERTO), file=sys.stderr)
+        print(msg("clipboard_setup"), file=sys.stderr)
         return 1
     for cmd in ("wl-paste", "wl-copy"):
         if subprocess.run(["sh", "-c", f"command -v {cmd}"],
                           capture_output=True).returncode != 0:
-            print(f"falta {cmd} (paquete wl-clipboard)", file=sys.stderr)
+            print(msg("missing_command", cmd=cmd), file=sys.stderr)
             return 1
 
     fd = os.open(PUERTO, os.O_RDWR)
@@ -2415,14 +3753,60 @@ cat > "$W/scripts/build.exp" <<'__PAYLOAD_SCRIPTS_BUILD_EXP__'
 set timeout 900
 log_user 1
 match_max 400000
+set lang "en"
+if {[info exists ::env(OMARCHY_LANG)] && $::env(OMARCHY_LANG) eq "es"} { set lang "es" }
 
-proc die {code msg} { puts "\n!! $msg"; exit $code }
+proc msg {key args} {
+    global lang
+    set id "$lang:$key"
+    switch -- $id {
+        en:build_login { set text "the Alpine live did not reach the login" }
+        es:build_login { set text "el live de Alpine no llegó al login" }
+        en:build_shell { set text "no Alpine root shell" }
+        es:build_shell { set text "no hay shell de root en Alpine" }
+        en:build_prompt { set text "could not set the prompt" }
+        es:build_prompt { set text "no se pudo fijar el prompt" }
+        en:build_iso { set text "provisioning ISO not found" }
+        es:build_iso { set text "no se encontró el ISO de aprovisionamiento" }
+        en:build_rootfs { set text "Arch Linux ARM rootfs missing from the ISO" }
+        es:build_rootfs { set text "falta el rootfs de Arch Linux ARM en el ISO" }
+        en:build_tail { set text "tail" }
+        es:build_tail { set text "tail" }
+        en:build_success { set text "   BUILD COMPLETED" }
+        es:build_success { set text "   CONSTRUCCION COMPLETADA" }
+        en:build_failed { set text "!!!!!! BUILD FAILED !!!!!!" }
+        es:build_failed { set text "!!!!!! LA CONSTRUCCION FALLO !!!!!!" }
+        en:build_eof { set text "EOF during build" }
+        es:build_eof { set text "EOF durante la construcción" }
+        en:verify { set text "verification" }
+        es:verify { set text "verificación" }
+        en:verify_heading { set text "==== VERIFICATION ====" }
+        es:verify_heading { set text "==== VERIFICACION ====" }
+        en:verify_esp { set text "-- ESP --" }
+        es:verify_esp { set text "-- ESP --" }
+        en:verify_kernel { set text "-- kernel --" }
+        es:verify_kernel { set text "-- kernel --" }
+        en:verify_user { set text "-- user --" }
+        es:verify_user { set text "-- usuario --" }
+        en:verify_dotfiles { set text "-- dotfiles --" }
+        es:verify_dotfiles { set text "-- dotfiles --" }
+        en:verify_hyprland { set text "-- Hyprland --" }
+        es:verify_hyprland { set text "-- hyprland --" }
+        en:build_shutdown { set text "===== BUILD VM SHUT DOWN =====" }
+        es:build_shutdown { set text "===== VM DE CONSTRUCCION APAGADA =====" }
+        default { set text $key }
+    }
+    if {[llength $args] == 0} { return $text }
+    return [format $text {*}$args]
+}
+
+proc die {code detail} { puts "\n!! $detail"; exit $code }
 proc wait_for {pat code msg {t 900}} {
     set timeout $t
     expect {
         -ex $pat {}
         timeout  { die $code "TIMEOUT: $msg" }
-        eof      { die [expr {$code+40}] "EOF inesperado: $msg" }
+        eof      { die [expr {$code+40}] "EOF: $msg" }
     }
 }
 
@@ -2436,50 +3820,50 @@ if {[string match "@*@" $ROOT]} {
 spawn -noecho $ROOT/scripts/qemu-build.sh
 
 # --- login del live de Alpine (root sin contraseña)
-wait_for "localhost login:" 10 "el live de Alpine no llegó al login" 300
+wait_for "localhost login:" 10 [msg build_login] 300
 send "root\r"
-wait_for "localhost:~#" 11 "no hay shell de root en Alpine" 120
+wait_for "localhost:~#" 11 [msg build_shell] 120
 
 send "export PS1='RDY> '; echo TOK_SH_\$?\r"
-wait_for "TOK_SH_0" 12 "no se pudo fijar el prompt" 60
+wait_for "TOK_SH_0" 12 [msg build_prompt] 60
 
 # --- localizar y montar el ISO de aprovisionamiento
 send "mkdir -p /media/prov; for d in /dev/vd? /dev/sr?; do mount -t iso9660 -o ro \$d /media/prov 2>/dev/null && \[ -f /media/prov/stage1.sh \] && break; umount /media/prov 2>/dev/null; done; ls /media/prov; echo TOK_PROV_\$?\r"
-wait_for "TOK_PROV_0" 13 "no se encontró el ISO de aprovisionamiento" 120
+wait_for "TOK_PROV_0" 13 [msg build_iso] 120
 
 send "test -s /media/prov/alarm-rootfs.tgz; echo TOK_TGZ_\$?\r"
-wait_for "TOK_TGZ_0" 14 "falta el rootfs de Arch Linux ARM en el ISO" 60
+wait_for "TOK_TGZ_0" 14 [msg build_rootfs] 60
 
 # --- construcción completa (particionado + chroot + paquetes + dotfiles)
 set timeout -1
 # stage1.sh emite el token TOK_BUILD_<rc> por si mismo (un pipe a tee
 # enmascararia el codigo de retorno).
-send "export DISK=/dev/vda; sh /media/prov/stage1.sh 2>&1 | tee /tmp/build.log\r"
+send "export OMARCHY_LANG=$lang; export DISK=/dev/vda; sh /media/prov/stage1.sh 2>&1 | tee /tmp/build.log\r"
 
 expect {
     -ex "TOK_BUILD_0" {
         puts "\n\n==========================================="
-        puts "   CONSTRUCCION COMPLETADA"
+        puts [msg build_success]
         puts "===========================================\n"
     }
     -re {TOK_BUILD_[1-9][0-9]*} {
-        puts "\n\n!!!!!! LA CONSTRUCCION FALLO !!!!!!\n"
+        puts "\n\n[msg build_failed]\n"
         set timeout 300
         send "echo; echo ---- ultimas 80 lineas ----; tail -n 80 /tmp/build.log; echo TOK_TAIL_\$?\r"
-        catch { wait_for "TOK_TAIL_" 15 "tail" 300 }
+        catch { wait_for "TOK_TAIL_" 15 [msg build_tail] 300 }
         exit 20
     }
-    eof { die 16 "EOF durante la construcción" }
+    eof { die 16 [msg build_eof] }
 }
 
 # --- verificación del disco resultante
 set timeout 600
-send "mount -o subvol=@ /dev/vda2 /mnt 2>/dev/null || mount /dev/vda2 /mnt; mount /dev/vda1 /mnt/boot 2>/dev/null; echo '==== VERIFICACION ===='; echo '-- ESP --'; find /mnt/boot -maxdepth 3 | head -40; echo '-- kernel --'; ls -la /mnt/boot/Image* /mnt/boot/initramfs* 2>/dev/null; echo '-- usuario --'; ls -la /mnt/home/; echo '-- dotfiles --'; ls /mnt/home/gabriel/.config 2>/dev/null | tr '\\n' ' '; echo; echo '-- hyprland --'; ls -la /mnt/usr/bin/Hyprland 2>/dev/null; echo TOK_VERIFY_\$?\r"
-catch { wait_for "TOK_VERIFY_" 17 "verificación" 600 }
+send "mount -o subvol=@ /dev/vda2 /mnt 2>/dev/null || mount /dev/vda2 /mnt; mount /dev/vda1 /mnt/boot 2>/dev/null; echo '[msg verify_heading]'; echo '[msg verify_esp]'; find /mnt/boot -maxdepth 3 | head -40; echo '[msg verify_kernel]'; ls -la /mnt/boot/Image* /mnt/boot/initramfs* 2>/dev/null; echo '[msg verify_user]'; ls -la /mnt/home/; echo '[msg verify_dotfiles]'; ls /mnt/home/gabriel/.config 2>/dev/null | tr '\\n' ' '; echo; echo '[msg verify_hyprland]'; ls -la /mnt/usr/bin/Hyprland 2>/dev/null; echo TOK_VERIFY_\$?\r"
+catch { wait_for "TOK_VERIFY_" 17 [msg verify] 600 }
 
 send "sync; umount -R /mnt 2>/dev/null; poweroff -f\r"
 expect eof
-puts "\n===== VM DE CONSTRUCCION APAGADA ====="
+puts "\n[msg build_shutdown]"
 exit 0
 __PAYLOAD_SCRIPTS_BUILD_EXP__
 chmod +x "$W/scripts/build.exp"
@@ -2493,7 +3877,36 @@ set timeout 900
 log_user 1
 match_max 400000
 set FIX [lindex $argv 0]
-if {$FIX eq ""} { puts "uso: repair.exp <fix.sh>"; exit 1 }
+set lang "en"
+if {[info exists ::env(OMARCHY_LANG)] && $::env(OMARCHY_LANG) eq "es"} { set lang "es" }
+
+proc msg {key args} {
+    global lang
+    set id "$lang:$key"
+    switch -- $id {
+        en:usage { set text "Usage: repair.exp <fix.sh>" }
+        es:usage { set text "Uso: repair.exp <fix.sh>" }
+        en:login { set text "Alpine login" }
+        es:login { set text "login de Alpine" }
+        en:shell { set text "root shell" }
+        es:shell { set text "shell de root" }
+        en:prompt { set text "prompt" }
+        es:prompt { set text "prompt" }
+        en:iso { set text "provisioning ISO" }
+        es:iso { set text "ISO de aprovisionamiento" }
+        en:success { set text "===== REPAIR COMPLETED =====" }
+        es:success { set text "===== REPARACION COMPLETADA =====" }
+        en:failed { set text "!!!!! REPAIR FAILED !!!!!" }
+        es:failed { set text "!!!!! LA REPARACION FALLO !!!!!" }
+        en:eof { set text "EOF" }
+        es:eof { set text "EOF" }
+        default { set text $key }
+    }
+    if {[llength $args] == 0} { return $text }
+    return [format $text {*}$args]
+}
+
+if {$FIX eq ""} { puts [msg usage]; exit 1 }
 
 proc wait_for {pat code msg {t 900}} {
     set timeout $t
@@ -2508,20 +3921,20 @@ if {[string match "@*@" $ROOT]} {
   set ROOT [expr {[info exists env(OMARM_ROOT)] ? $env(OMARM_ROOT) : [pwd]}]
 }
 spawn -noecho $ROOT/scripts/qemu-build.sh
-wait_for "localhost login:" 10 "login de Alpine" 300
+wait_for "localhost login:" 10 [msg login] 300
 send "root\r"
-wait_for "localhost:~#" 11 "shell de root" 120
+wait_for "localhost:~#" 11 [msg shell] 120
 send "export PS1='RDY> '; echo TOK_SH_\$?\r"
-wait_for "TOK_SH_0" 12 "prompt" 60
+wait_for "TOK_SH_0" 12 [msg prompt] 60
 send "mkdir -p /media/prov; for d in /dev/vd? /dev/sr?; do mount -t iso9660 -o ro \$d /media/prov 2>/dev/null && \[ -f /media/prov/repair.sh \] && break; umount /media/prov 2>/dev/null; done; ls /media/prov; echo TOK_PROV_\$?\r"
-wait_for "TOK_PROV_0" 13 "ISO de aprovisionamiento" 120
+wait_for "TOK_PROV_0" 13 [msg iso] 120
 
 set timeout -1
-send "export FIXSCRIPT=$FIX; sh /media/prov/repair.sh 2>&1 | tee /tmp/repair.log\r"
+send "export OMARCHY_LANG=$lang; export FIXSCRIPT=$FIX; sh /media/prov/repair.sh 2>&1 | tee /tmp/repair.log\r"
 expect {
-    -ex "TOK_REPAIR_0" { puts "\n\n===== REPARACION COMPLETADA =====\n" }
-    -re {TOK_REPAIR_[1-9][0-9]*} { puts "\n\n!!!!! LA REPARACION FALLO !!!!!\n"; exit 20 }
-    eof { puts "\n!! EOF"; exit 16 }
+    -ex "TOK_REPAIR_0" { puts "\n\n[msg success]\n" }
+    -re {TOK_REPAIR_[1-9][0-9]*} { puts "\n\n[msg failed]\n"; exit 20 }
+    eof { puts "\n!! [msg eof]"; exit 16 }
 }
 set timeout 300
 send "sync; poweroff -f\r"
@@ -2536,8 +3949,9 @@ cat > "$W/scripts/qemu.sh" <<'__PAYLOAD_SCRIPTS_QEMU_SH__'
 # VM de construcción: aarch64 NATIVO con HVF (sin emulación) sobre Apple Silicon.
 # Live de Alpine por consola serie + ISO de aprovisionamiento con el rootfs de ALARM.
 set -e
-# La raiz la fija write_payloads al desplegar este fichero.
-ROOT=@OMARM_ROOT@
+# La raiz se deduce de la ubicacion del propio script: asi el repo se puede
+# clonar en cualquier sitio sin editar nada.
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 : "${VM_SMP:=8}"
 : "${VM_MEM:=8192}"
@@ -2561,7 +3975,6 @@ exec qemu-system-aarch64 \
   -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
   -device virtio-rng-pci \
   -nographic
-
 __PAYLOAD_SCRIPTS_QEMU_SH__
 chmod +x "$W/scripts/qemu.sh"
 
@@ -2581,6 +3994,11 @@ set -euo pipefail
 # clonar en cualquier sitio sin editar nada.
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DOCS="$HOME/Library/Containers/com.utmapp.UTM/Data/Documents"
+
+if ! type omarchy_msg >/dev/null 2>&1; then
+  [ -f "${OMARCHY_CATALOG:-$ROOT/localization/catalog.sh}" ] && . "${OMARCHY_CATALOG:-$ROOT/localization/catalog.sh}"
+fi
+msg() { omarchy_msg "$@"; }
 NAME="${1:-Omarchy ARM}"
 : "${DEST_DIR:=$DOCS}"
 BUNDLE="$DEST_DIR/$NAME.utm"
@@ -2589,8 +4007,8 @@ VARS_TPL=/Applications/UTM.app/Contents/Resources/qemu/edk2-arm-vars.fd
 : "${UTM_CPUS:=8}"
 : "${UTM_MEM:=8192}"
 
-[ -f "$SRC_QCOW" ] || { echo "!! falta $SRC_QCOW"; exit 1; }
-[ -f "$VARS_TPL" ] || { echo "!! falta la plantilla de NVRAM UEFI $VARS_TPL"; exit 1; }
+[ -f "$SRC_QCOW" ] || { printf '!! %s\n' "$(msg utm_missing_disk "$SRC_QCOW")"; exit 1; }
+[ -f "$VARS_TPL" ] || { printf '!! %s\n' "$(msg utm_missing_vars "$VARS_TPL")"; exit 1; }
 
 VM_UUID=$(uuidgen)
 # Quien reciba el bundle lee estas notas en UTM antes de arrancar: tienen que
@@ -2608,33 +4026,33 @@ if [ "$DEST_DIR" = "$DOCS" ] && pgrep -x UTM >/dev/null; then
   UTMCTL=/Applications/UTM.app/Contents/MacOS/utmctl
   CORRIENDO=$("$UTMCTL" list 2>/dev/null | awk '$2=="started"{print $3" "$4}' | grep -v "^$" || true)
   if [ -n "$CORRIENDO" ]; then
-    echo "==> HAY VMs EN MARCHA en UTM:"
+    echo "==> $(msg utm_running_vms)"
     echo "$CORRIENDO" | sed 's/^/      /'
-    echo "    Para registrar el bundle hay que reiniciar UTM, y eso las cortaria."
+    echo "    $(msg utm_restart_warning)"
     if [ -t 0 ] && [ "${ASSUME_YES:-}" != "1" ]; then
-      printf "    ¿Cerrarlas y reiniciar UTM? [s/N]: "
+      printf '    %s [%s]: ' "$(msg utm_close_prompt)" "$(msg yesno_no)"
       read -r R </dev/tty || R=""
       case "$(printf '%s' "$R" | tr '[:upper:]' '[:lower:]')" in
-        s|si|y|yes) : ;;
-        *) echo "==> no se reinicia UTM: importa el bundle a mano con Archivo → Importar"; SKIP_RESTART=1 ;;
+        s|si|sí|y|yes) : ;;
+        *) echo "==> $(msg utm_manual_import)"; SKIP_RESTART=1 ;;
       esac
     else
-      echo "==> modo desatendido: NO se cierra UTM. Importa el bundle a mano."
+      echo "==> $(msg utm_unattended)"
       SKIP_RESTART=1
     fi
   fi
   if [ "${SKIP_RESTART:-0}" != "1" ]; then
-    echo "==> cerrando UTM para que reescanee Documents"
+    echo "==> $(msg utm_closing)"
     osascript -e 'quit app "UTM"' >/dev/null 2>&1 || true
     for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x UTM >/dev/null || break; sleep 1; done
     pgrep -x UTM >/dev/null && { pkill -x UTM || true; sleep 2; }
   fi
 fi
 
-echo "==> creando $BUNDLE"
+echo "==> $(msg utm_creating) $BUNDLE"
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Data"
-echo "    copiando disco ($(du -h "$SRC_QCOW" | cut -f1))"
+echo "    $(msg utm_copying) ($(du -h "$SRC_QCOW" | cut -f1))"
 cp -c "$SRC_QCOW" "$BUNDLE/Data/$DISK_UUID.qcow2" 2>/dev/null || cp "$SRC_QCOW" "$BUNDLE/Data/$DISK_UUID.qcow2"
 # La mitad VARS del UEFI aarch64 usa la plantilla edk2-ARM-vars.fd (no aarch64);
 # UTM aporta edk2-aarch64-code.fd en tiempo de ejecución vía -L.
@@ -2660,9 +4078,7 @@ cat > "$BUNDLE/config.plist" <<PLIST
 		<key>Icon</key>
 		<string>arch-linux</string>
 		<key>Notes</key>
-		<string>Arch Linux ARM (aarch64) + Hyprland + dotfiles de Omarchy 4.
-Usuario: ${NOTES_USER} · Contraseña: ${NOTES_PASS} (también root). Cámbiala con passwd.
-La tecla Option (⌥) actúa como SUPER. Lee LEEME.md.</string>
+		<string>$(msg utm_notes "$NOTES_USER" "$NOTES_PASS")</string>
 	</dict>
 	<key>System</key>
 	<dict>
@@ -2791,24 +4207,24 @@ La tecla Option (⌥) actúa como SUPER. Lee LEEME.md.</string>
 </plist>
 PLIST
 
-echo "==> validando el plist"
+echo "==> $(msg utm_validate)"
 plutil -lint "$BUNDLE/config.plist"
 du -sh "$BUNDLE"
 ls -la "$BUNDLE" "$BUNDLE/Data"
 
 if [ "$DEST_DIR" = "$DOCS" ]; then
-  echo "==> abriendo UTM para que registre el bundle"
+  echo "==> $(msg utm_opening)"
   open -a UTM
   sleep 6
   /Applications/UTM.app/Contents/MacOS/utmctl list || true
 else
-  echo "==> bundle creado fuera de la carpeta de UTM (no se registra)"
+  echo "==> $(msg utm_not_registered)"
 fi
 
 echo ""
-echo "Bundle:  $BUNDLE"
-echo "UUID:    $VM_UUID"
-echo "Arrancar: /Applications/UTM.app/Contents/MacOS/utmctl start \"$NAME\""
+echo "$(msg utm_bundle):  $BUNDLE"
+echo "$(msg utm_uuid):    $VM_UUID"
+echo "$(msg utm_start): /Applications/UTM.app/Contents/MacOS/utmctl start \"$NAME\""
 __PAYLOAD_SCRIPTS_MAKE-UTM_SH__
 chmod +x "$W/scripts/make-utm.sh"
   # Todos los valores van entrecomillados: config.env se consume con "source" y
@@ -2816,6 +4232,8 @@ chmod +x "$W/scripts/make-utm.sh"
   # una contrasena o un nombre de VM). Sin comillas, la segunda palabra se
   # ejecuta como comando y el chroot muere con 127.
   cat > "$W/provision/config.env" <<CFGEOF
+# Payloads source the canonical catalog.sh emitted beside them.
+OMARCHY_LANG="$OMARCHY_LANG"
 VM_USER="$VM_USER"
 VM_PASSWORD="$VM_PASSWORD"
 VM_FULLNAME="$VM_FULLNAME"
@@ -2852,39 +4270,39 @@ make_iso() {  # make_iso <destino.iso> <fichero...>
 
 # ─────────────────────────────── fase: build ───────────────────────────────
 ph_build() {
-  phase "build · construccion del disco (headless, QEMU + HVF)"
+  phase "$(omarchy_msg phase_build)"
   write_payloads
   # Nombres cortos: hdiutil trunca los largos en el arbol ISO9660
   make_iso "$W/provision/provision.iso" \
     "$W/provision/stage1.sh" "$W/provision/stage2.sh" "$W/provision/stage3.sh" \
-    "$W/provision/config.env" "$W/provision/packages-core.txt" "$W/provision/packages-extra.txt"
+    "$W/provision/config.env" "$W/provision/catalog.sh" "$W/provision/packages-core.txt" "$W/provision/packages-extra.txt"
   ln -f "$W/dl/alarm-rootfs.tgz" /tmp/alarm-rootfs.tgz 2>/dev/null || true
   # el rootfs viaja dentro del ISO de aprovisionamiento
   local d; d=$(mktemp -d)
-  cp "$W/provision"/{stage1.sh,stage2.sh,stage3.sh,config.env,packages-core.txt,packages-extra.txt} "$d"/
+  cp "$W/provision"/{stage1.sh,stage2.sh,stage3.sh,config.env,catalog.sh,packages-core.txt,packages-extra.txt} "$d"/
   cp "$W/provision"/{extras.sh,armsync.sh,clipbrd.sh,vdagent.py} "$d"/
   ln "$W/dl/alarm-rootfs.tgz" "$d/alarm-rootfs.tgz" 2>/dev/null || cp "$W/dl/alarm-rootfs.tgz" "$d/"
   rm -f "$W/provision/provision.iso"
   hdiutil makehybrid -iso -joliet -default-volume-name PROVISION -o "$W/provision/provision.iso" "$d" >/dev/null
   rm -rf "$d"
-  ok "ISO de aprovisionamiento $(du -h "$W/provision/provision.iso" | cut -f1)"
+  ok "$(omarchy_msg build_iso_done "$(du -h "$W/provision/provision.iso" | cut -f1)")"
 
   # Reconstruir descarta el disco anterior, que son ~40 min de trabajo. Si hay
   # uno y la sesion es interactiva, se pregunta; si no, se conserva una copia.
   if [[ -s $W/vm/omarchy-arm.qcow2 ]]; then
-    if confirm "Ya existe un disco construido ($(du -h "$W/vm/omarchy-arm.qcow2" | cut -f1)). ¿Descartarlo y reconstruir?" no; then
+    if confirm "$(omarchy_msg confirm_rebuild "$(du -h "$W/vm/omarchy-arm.qcow2" | cut -f1)")" no; then
       rm -f "$W/vm/omarchy-arm.qcow2"
     else
       mv "$W/vm/omarchy-arm.qcow2" "$W/vm/omarchy-arm.qcow2.anterior"
-      info "el anterior queda en $W/vm/omarchy-arm.qcow2.anterior"
+      info "$(omarchy_msg build_rebuild_previous "$W/vm/omarchy-arm.qcow2.anterior")"
     fi
   fi
   rm -f "$W/vm/efi-vars.fd"
   qemu-img create -f qcow2 "$W/vm/omarchy-arm.qcow2" "$DISK_SIZE" >/dev/null
   dd if=/dev/zero of="$W/vm/efi-vars.fd" bs=1m count=64 status=none
 
-  info "arrancando el constructor (Alpine live → chroot → 3 etapas)"
-  info "esto tarda ~40 min segun la red; el log completo en $W/logs/build.log"
+  info "$(omarchy_msg build_start)"
+  info "$(omarchy_msg build_duration "$W/logs/build.log")"
   VM_SMP=$BUILD_SMP VM_MEM=$BUILD_MEM PROV_ISO="$W/provision/provision.iso" \
     expect -f "$W/scripts/build.exp" > "$W/logs/build.log" 2>&1
   local rc=$?
@@ -2892,50 +4310,50 @@ ph_build() {
   # (sin dotfiles, sin herramientas, sin tema) pasaba por construccion correcta.
   if grep -qa "TOK_STAGE3_" "$W/logs/build.log" && ! grep -qa "TOK_STAGE3_0" "$W/logs/build.log"; then
     sed 's/\x1b\[[0-9;?=]*[a-zA-Z]//g' "$W/logs/build.log" | grep -aE "^(!!|==>)" | tail -25
-    die "stage3 fallo: el disco existe pero no tiene la configuracion de Omarchy. Log: $W/logs/build.log"
+    die "$(omarchy_msg build_stage3_failed "$W/logs/build.log")"
   fi
   grep -qa "TOK_BUILD_0" "$W/logs/build.log" || {
     sed 's/\x1b\[[0-9;?=]*[a-zA-Z]//g' "$W/logs/build.log" | tail -40
-    die "la construccion fallo (rc=$rc); revisa $W/logs/build.log"
+    die "$(omarchy_msg build_failed_rc "$rc" "$W/logs/build.log")"
   }
-  ok "disco construido: $(du -h "$W/vm/omarchy-arm.qcow2" | cut -f1)"
+  ok "$(omarchy_msg build_disk_done "$(du -h "$W/vm/omarchy-arm.qcow2" | cut -f1)")"
 }
 
 # ──────────────────────────────── fase: utm ────────────────────────────────
 ph_utm() {
-  phase "utm · bundle .utm"
+  phase "$(omarchy_msg phase_utm)"
   write_payloads
-  [[ -s $W/vm/omarchy-arm.qcow2 ]] || die "no hay disco construido; ejecuta la fase build"
+  [[ -s $W/vm/omarchy-arm.qcow2 ]] || die "$(omarchy_msg build_disk_missing)"
   # Borrar una VM homonima destruye su disco. Si ya existe una, se pregunta;
   # sin terminal se elige otro nombre en vez de destruir nada.
   if "$UTMCTL" list 2>/dev/null | grep -q "  $VM_NAME$"; then
-    if confirm "Ya existe una VM llamada '$VM_NAME' en UTM. ¿Borrarla y reemplazarla?" no; then
+    if confirm "$(omarchy_msg confirm_vm_delete "'$VM_NAME'")" no; then
       "$UTMCTL" delete "$VM_NAME" >/dev/null 2>&1 || true; sleep 2
     else
       VM_NAME="$VM_NAME $(date +%H%M)"
-      info "se registrara como '$VM_NAME'"
+      info "$(omarchy_msg utm_registering "$VM_NAME")"
     fi
   fi
   local ulog="$W/logs/make-utm.log"
-  if ! SRC_QCOW="$W/vm/omarchy-arm.qcow2" UTM_CPUS=$UTM_CPUS UTM_MEM=$UTM_MEM \
+  if ! SRC_QCOW="$W/vm/omarchy-arm.qcow2" UTM_CPUS=$UTM_CPUS UTM_MEM=$UTM_MEM OMARCHY_LANG="$OMARCHY_LANG" OMARCHY_CATALOG="$W/provision/catalog.sh" \
        NOTES_USER="$VM_USER" NOTES_PASS="$VM_PASSWORD" ASSUME_YES="${ASSUME_YES:-}" \
        bash "$W/scripts/make-utm.sh" "$VM_NAME" > "$ulog" 2>&1; then
     tail -20 "$ulog"
-    die "make-utm.sh fallo; log completo en $ulog"
+    die "$(omarchy_msg utm_make_failed "$ulog")"
   fi
   tail -4 "$ulog"
-  [[ -f "$DOCS/$VM_NAME.utm/config.plist" ]] || die "el bundle no quedo en $DOCS"
-  ok "bundle creado en $DOCS/$VM_NAME.utm"
+  [[ -f "$DOCS/$VM_NAME.utm/config.plist" ]] || die "$(omarchy_msg utm_bundle_missing "$DOCS")"
+  ok "$(omarchy_msg utm_bundle_done "$DOCS/$VM_NAME.utm")"
 }
 
 # ─────────────────────────────── fase: verify ──────────────────────────────
 ph_verify() {
-  phase "verify · arranque y comprobacion"
+  phase "$(omarchy_msg phase_verify)"
   "$UTMCTL" start "$VM_NAME" >/dev/null 2>&1 || true
-  info "esperando al arranque..."
+  info "$(omarchy_msg verify_waiting)"
   sleep 60
   local pty; pty=$("$UTMCTL" attach "$VM_NAME" 2>&1 | grep -o '/dev/ttys[0-9]*' | head -1)
-  [[ -n $pty ]] || { warn "no se pudo obtener el puerto serie; comprueba a mano"; return 0; }
+  [[ -n $pty ]] || { warn "$(omarchy_msg verify_pty_missing)"; return 0; }
   # Antes esta fase recogia metricas y no las comparaba con nada, asi que
   # terminaba en "ok" pasara lo que pasara. Ahora el invitado emite un veredicto
   # y el anfitrion lo comprueba. Seis condiciones, todas necesarias:
@@ -2975,18 +4393,18 @@ expect { -re {VEREDICTO_(OK|KO)} {} timeout {} }
 EXPEOF
   sed 's/\x1b\[[0-9;?=]*[a-zA-Z]//g' "$vlog" | grep -aE "^###" | tail -1
   if grep -qa VEREDICTO_OK "$vlog"; then
-    ok "VM '$VM_NAME' verificada: Omarchy 4, Hyprland + quickshell vivos, comandos y unidades en su sitio"
+    ok "$(omarchy_msg verify_ok "$VM_NAME")"
   elif grep -qa VEREDICTO_KO "$vlog"; then
     sed 's/\x1b\[[0-9;?=]*[a-zA-Z]//g' "$vlog" | tail -20
-    die "la VM arranca pero el escritorio no esta completo; log en $vlog"
+    die "$(omarchy_msg verify_incomplete "$vlog")"
   else
-    warn "no hubo respuesta por el puerto serie; comprueba a mano la ventana de UTM"
+    warn "$(omarchy_msg verify_no_response)"
   fi
 }
 
 # ────────────────────────────── fase: sanitize ─────────────────────────────
 ph_sanitize() {
-  phase "sanitize · copia limpia para distribuir"
+  phase "$(omarchy_msg phase_sanitize)"
   write_payloads
   "$UTMCTL" stop "$VM_NAME" >/dev/null 2>&1 || true
   while [[ $("$UTMCTL" status "$VM_NAME" 2>/dev/null) == started ]]; do sleep 3; done
@@ -2995,50 +4413,54 @@ ph_sanitize() {
   [[ -s $src ]] || src="$W/vm/omarchy-arm.qcow2"
   rm -f "$W/dist/dist.qcow2"
   cp -c "$src" "$W/dist/dist.qcow2" 2>/dev/null || cp "$src" "$W/dist/dist.qcow2"
-  ok "copia de trabajo hecha (la VM original no se toca)"
+  ok "$(omarchy_msg sanitize_copy_done)"
 
   make_iso "$W/provision/repair.iso" "$W/provision/repair.sh" "$W/provision/sanitize.sh" \
-           "$W/provision/config.env" "$W/provision/extras.sh" "$W/provision/armsync.sh"
-  info "limpiando (usuario generico, sin claves ni identidad)..."
+           "$W/provision/config.env" "$W/provision/catalog.sh" "$W/provision/extras.sh" "$W/provision/armsync.sh"
+  info "$(omarchy_msg sanitize_start)"
   PROV_ISO="$W/provision/repair.iso" DISK_IMG="$W/dist/dist.qcow2" \
   DIST_OLD_USER="$VM_USER" DIST_NEW_USER="$DIST_NEW_USER" \
     expect -f "$W/scripts/repair.exp" sanitize.sh > "$W/logs/sanitize.log" 2>&1
   grep -qa "TOK_REPAIR_0" "$W/logs/sanitize.log" || {
     sed 's/\x1b\[[0-9;?=]*[a-zA-Z]//g' "$W/logs/sanitize.log" | tail -30
-    die "la limpieza fallo; revisa $W/logs/sanitize.log"
+    die "$(omarchy_msg sanitize_failed "$W/logs/sanitize.log")"
   }
-  ok "imagen sanitizada"
+  ok "$(omarchy_msg sanitize_done)"
 }
 
 # ────────────────────────────── fase: package ──────────────────────────────
 ph_package() {
-  phase "package · compactar y comprimir"
-  [[ -s $W/dist/dist.qcow2 ]] || die "no hay imagen sanitizada; ejecuta la fase sanitize"
-  info "compactando y comprimiendo los clusters del qcow2..."
+  phase "$(omarchy_msg phase_package)"
+  [[ -s $W/dist/dist.qcow2 ]] || die "$(omarchy_msg package_missing)"
+  info "$(omarchy_msg package_compacting)"
   rm -f "$W/dist/slim.qcow2"
   # -c comprime dentro del propio qcow2: la imagen ocupa la mitad tambien ya
   # descomprimida en el disco de quien la recibe. Se descomprime al leer.
-  qemu-img convert -c -O qcow2 "$W/dist/dist.qcow2" "$W/dist/slim.qcow2" || die "qemu-img convert fallo"
-  qemu-img check "$W/dist/slim.qcow2" >/dev/null || die "la imagen compactada no valida"
-  ok "$(du -h "$W/dist/dist.qcow2" | cut -f1) → $(du -h "$W/dist/slim.qcow2" | cut -f1)"
+  qemu-img convert -c -O qcow2 "$W/dist/dist.qcow2" "$W/dist/slim.qcow2" || die "$(omarchy_msg package_convert_failed)"
+  qemu-img check "$W/dist/slim.qcow2" >/dev/null || die "$(omarchy_msg package_check_failed)"
+  ok "$(omarchy_msg package_sizes "$(du -h "$W/dist/dist.qcow2" | cut -f1)" "$(du -h "$W/dist/slim.qcow2" | cut -f1)")"
 
   rm -rf "$W/dist/$VM_NAME.utm"
-  SRC_QCOW="$W/dist/slim.qcow2" DEST_DIR="$W/dist" UTM_CPUS=$UTM_CPUS UTM_MEM=$UTM_MEM \
+  SRC_QCOW="$W/dist/slim.qcow2" DEST_DIR="$W/dist" UTM_CPUS=$UTM_CPUS UTM_MEM=$UTM_MEM OMARCHY_LANG="$OMARCHY_LANG" OMARCHY_CATALOG="$W/provision/catalog.sh" \
     NOTES_USER="$DIST_NEW_USER" NOTES_PASS="$DIST_NEW_USER" \
     bash "$W/scripts/make-utm.sh" "$VM_NAME" >/dev/null \
-    || die "no se pudo crear el bundle distribuible"
+    || die "$(omarchy_msg package_bundle_failed)"
   # Ultima red: el bundle no debe llevar rastro del usuario de construccion
   if grep -q "\b$VM_USER\b" "$W/dist/$VM_NAME.utm/config.plist" 2>/dev/null; then
-    die "el config.plist del bundle menciona a '$VM_USER'; revisa make-utm.sh"
+    die "$(omarchy_msg package_config_user "$VM_USER")"
   fi
-  write_readme "$W/dist/LEEME.md"
+  if [ "$OMARCHY_LANG" = es ]; then
+    write_readme "$W/dist/LEEME.md"
+  else
+    write_readme_en "$W/dist/LEEME.md"
+  fi
 
-  info "comprimiendo..."
+  info "$(omarchy_msg package_compressing)"
   ( cd "$W/dist" && rm -f omarchy-arm-utm.zip \
       && zip -r -q -1 omarchy-arm-utm.zip "$VM_NAME.utm" LEEME.md \
       && shasum -a 256 omarchy-arm-utm.zip > omarchy-arm-utm.zip.sha256 )
   rm -f "$W/dist/dist.qcow2" "$W/dist/slim.qcow2"
-  ok "listo: $W/dist/omarchy-arm-utm.zip ($(du -h "$W/dist/omarchy-arm-utm.zip" | cut -f1))"
+  ok "$(omarchy_msg package_done "$W/dist/omarchy-arm-utm.zip" "$(du -h "$W/dist/omarchy-arm-utm.zip" | cut -f1)")"
   cat "$W/dist/omarchy-arm-utm.zip.sha256"
 }
 
@@ -3183,6 +4605,73 @@ Arch Linux ARM.
 __PAYLOAD_LEEME_MD__
 }
 
+# English is the default generated artifact; the Spanish artifact above is
+# retained for --lang es.
+write_readme_en() {
+  cat > "$1" <<'__PAYLOAD_LEEME_EN_MD__'
+# Omarchy on Arch Linux ARM — UTM image for Apple Silicon
+
+**v2 · 2026-08-24**
+
+Native **aarch64** virtual machine (HVF accelerated, no emulation) with Arch
+Linux ARM, Hyprland, and the configuration, themes, and tools of
+[Omarchy 4](https://omarchy.org).
+
+## Requirements
+
+- Apple Silicon Mac (M1 or later)
+- [UTM](https://mac.getutm.app) 4.7 or later
+- About 15 GB free disk space
+
+## Install
+
+1. Unzip the archive.
+2. Double-click `Omarchy ARM.utm` (or use **File → Import** in UTM).
+3. Start the VM. It logs in automatically.
+
+## Credentials
+
+| | |
+|---|---|
+| User | `omarchy` |
+| Password | `omarchy` (also root) |
+
+Change the password immediately after login with `passwd`.
+
+## Keyboard
+
+The Mac keeps Cmd before UTM receives it, so Option (⌥) is configured as
+SUPER. Main shortcuts: **⌥+Space** opens the Omarchy menu, **⌥+Return** opens
+a terminal, and **⌥+K** shows all shortcuts.
+
+## Optional apps
+
+Proprietary applications are not redistributed in the image. Install official
+ARM64 builds on your own machine with:
+
+```bash
+omarchy-arm-extras --list
+omarchy-arm-extras
+omarchy-arm-extras obsidian
+omarchy-arm-extras --all
+```
+
+The image includes Hyprland, the Omarchy shell, themes, terminal, browser,
+Omarchy tools compiled for aarch64, OBS Studio, and Pinta. VM rendering uses
+software llvmpipe; blur and shadows are disabled for compatibility.
+
+## Resolution and updates
+
+The default resolution is 1920x1200. Edit `~/.config/hypr/monitors.lua` and
+restart the VM to change it. `omarchy-update` keeps the checkout and system
+packages up to date; ARM-unavailable Omarchy packages are skipped with a
+warning.
+
+This is an unofficial reconstruction over Arch Linux ARM. Omarchy itself
+supports x86_64.
+__PAYLOAD_LEEME_EN_MD__
+}
+
 # ──────────────────────────────────── preguntas ────────────────────────────
 # Solo se pregunta lo que es de verdad una decision y sale caro equivocar.
 # Todo lo demas (version de Alpine, URL del rootfs, rama de Omarchy, tamano del
@@ -3192,87 +4681,122 @@ HACER_TOOLS=si
 HACER_LIBRES=si
 HACER_DIST=si
 
+display_choice() {
+  if [ "$1" = si ]; then omarchy_msg display_yes; else omarchy_msg display_no; fi
+}
+
 cuestionario() {
   detectar_del_anfitrion
   if (( ! INTERACTIVO )); then
     # Sin terminal: el comportamiento historico, todo automatico.
     return
   fi
-  phase "configuracion"
-  info "Enter acepta el valor entre corchetes. Detectados de tu Mac."
+  phase "$(omarchy_msg config)"
+  info "$(omarchy_msg config_hint)"
   echo
 
-  ask VM_TIMEZONE "Zona horaria"                     "$VM_TIMEZONE"
-  ask VM_KEYMAP   "Teclado (consola)"                "$VM_KEYMAP"
-  ask VM_XKB      "Teclado (Hyprland/Wayland)"       "$VM_XKB"
+  ask VM_TIMEZONE "$(omarchy_msg timezone)"          "$VM_TIMEZONE"
+  ask VM_KEYMAP   "$(omarchy_msg keyboard_console)"   "$VM_KEYMAP"
+  ask VM_XKB      "$(omarchy_msg keyboard_wayland)"   "$VM_XKB"
   echo
-  ask UTM_CPUS    "Nucleos para la VM"               "$UTM_CPUS"
-  ask UTM_MEM     "Memoria para la VM (MiB)"         "$UTM_MEM"
-  ask DISK_SIZE   "Tamano del disco"                 "$DISK_SIZE"
+  ask UTM_CPUS    "$(omarchy_msg vm_cpus)"           "$UTM_CPUS"
+  ask UTM_MEM     "$(omarchy_msg vm_memory)"         "$UTM_MEM"
+  ask DISK_SIZE   "$(omarchy_msg disk_size)"         "$DISK_SIZE"
   echo
 
   # ~40 min de compilaciones. Sin ellas el escritorio funciona, pero faltan el
   # salvapantallas, el anotador de capturas y la calculadora, entre otros.
-  if confirm "Compilar las 17 herramientas de Omarchy que no existen para ARM (~40 min)?" si; then
+  if confirm "$(omarchy_msg confirm_tools)" si; then
     HACER_TOOLS=si
   else
     HACER_TOOLS=no
-    warn "sin ellas faltaran ttfx, tensaku, omacalc, omacut, omawrite, aether, cliamp..."
+    warn "$(omarchy_msg no_tools)"
   fi
   echo
 
   # OBS y Pinta son lo mas caro del build. Van dentro porque son software libre
   # y la imagen que se distribuye los lleva, pero para una VM de pruebas sobran.
-  if confirm "Incluir OBS Studio y Pinta (software libre, se compilan: ~45 min)?" si; then
+  if confirm "$(omarchy_msg confirm_free)" si; then
     HACER_LIBRES=si
   else
     HACER_LIBRES=no
-    info "se pueden anadir despues desde dentro: omarchy-arm-extras pinta obs"
+    info "$(omarchy_msg free_after)"
   fi
   echo
 
   # La distincion que mas cambia el resultado: imagen para repartir frente a
   # VM para uso propio.
-  info "Dos usos posibles:"
-  info "  · imagen para repartir  → renombra el usuario a '$DIST_NEW_USER', borra"
-  info "    claves SSH e identidad, y genera un zip de ~6,5 GB (~30 min extra)"
-  info "  · VM para ti            → se queda como esta, con el usuario '$VM_USER'"
-  if confirm "Preparar la imagen para repartir?" no; then
+  info "$(omarchy_msg use_choices)"
+  info "  · $(omarchy_msg dist_desc "$DIST_NEW_USER")"
+  info "  · $(omarchy_msg personal_desc "$VM_USER")"
+  if confirm "$(omarchy_msg confirm_dist)" no; then
     HACER_DIST=si
-    ask DIST_NEW_USER "Usuario de la imagen distribuible" "$DIST_NEW_USER"
+    ask DIST_NEW_USER "$(omarchy_msg dist_user)" "$DIST_NEW_USER"
   else
     HACER_DIST=no
-    ask VM_USER     "Usuario de la VM"     "$VM_USER"
-    ask VM_PASSWORD "Contrasena"           "$VM_PASSWORD"
-    ask VM_FULLNAME "Nombre completo"      "$VM_FULLNAME"
+    ask VM_USER     "$(omarchy_msg vm_user)"  "$VM_USER"
+    ask VM_PASSWORD "$(omarchy_msg password)" "$VM_PASSWORD"
+    ask VM_FULLNAME "$(omarchy_msg fullname)" "$VM_FULLNAME"
     PHASES=(deps fetch prepare build utm verify)
   fi
   echo
-  info "resumen: $VM_KEYMAP/$VM_XKB · $VM_TIMEZONE · ${UTM_CPUS} nucleos · ${UTM_MEM} MiB · disco $DISK_SIZE"
-  info "         herramientas: $HACER_TOOLS · OBS+Pinta: $HACER_LIBRES · repartir: $HACER_DIST"
-  confirm "Empezar?" si || die "cancelado"
+  info "$(omarchy_msg summary "$VM_KEYMAP" "$VM_XKB" "$VM_TIMEZONE" "$UTM_CPUS" "$UTM_MEM" "$DISK_SIZE")"
+  info "$(omarchy_msg summary_tools "$(display_choice "$HACER_TOOLS")" "$(display_choice "$HACER_LIBRES")" "$(display_choice "$HACER_DIST")")"
+  confirm "$(omarchy_msg confirm_start)" si || die "$(omarchy_msg cancelled)"
 }
 
 # ──────────────────────────────────── main ─────────────────────────────────
-usage() { sed -n '2,30p' "$0" | sed 's/^#\{0,2\} \{0,1\}//'; }
+usage() { omarchy_msg usage; }
+
+# English is the default. An explicit --lang is processed below and therefore
+# overrides OMARCHY_LANG, including when repeated (the last value wins).
+LANG_FROM_ENV="${OMARCHY_LANG:-en}"
+LANG_ENV_INVALID=""
+case "$LANG_FROM_ENV" in
+  en|es) OMARCHY_LANG="$LANG_FROM_ENV" ;;
+  *) LANG_ENV_INVALID="$LANG_FROM_ENV"; OMARCHY_LANG=en ;;
+esac
+LANG_CLI_SET=0
+reject_invalid_env_language() {
+  if [ -n "$LANG_ENV_INVALID" ] && [ "$LANG_CLI_SET" -eq 0 ]; then
+    printf '%s\n' "Invalid language: $LANG_ENV_INVALID (expected en or es)" >&2
+    usage >&2
+    exit 2
+  fi
+}
 
 run_from=""; run_only=""
 while (($#)); do
   case "$1" in
+    --lang)
+      [[ $# -ge 2 ]] || { printf '%s\n' "$(omarchy_msg missing_lang)" >&2; usage >&2; exit 2; }
+      case "$2" in
+        en|es) OMARCHY_LANG="$2"; LANG_CLI_SET=1 ;;
+        *) printf '%s\n' "$(omarchy_msg invalid_lang "$2")" >&2; usage >&2; exit 2 ;;
+      esac
+      shift 2 ;;
     --from) run_from="$2"; shift 2 ;;
     --only) run_only="$2"; shift 2 ;;
-    --list) printf '%s\n' "${PHASES[@]}"; exit 0 ;;
+    --list) reject_invalid_env_language; printf '%s\n' "${PHASES[@]}"; exit 0 ;;
     --yes|-y|--sin-preguntas) ASSUME_YES=1; INTERACTIVO=0; shift ;;
-    -h|--help) usage; exit 0 ;;
-    *) die "opcion desconocida: $1" ;;
+    -h|--help) reject_invalid_env_language; usage; exit 0 ;;
+    *) die "$(omarchy_msg unknown_option "$1")" ;;
   esac
 done
+
+# A valid CLI selection wins even when the inherited environment is stale or
+# invalid. Without a CLI selection, reject an invalid environment value.
+if [ -n "$LANG_ENV_INVALID" ] && [ "$LANG_CLI_SET" -eq 0 ]; then
+  printf '%s\n' "Invalid language: $LANG_ENV_INVALID (expected en or es)" >&2
+  usage >&2
+  exit 2
+fi
 
 # Un nombre de fase mal escrito no debe salir con exito sin hacer nada.
 for sel in "$run_from" "$run_only"; do
   [[ -z $sel ]] && continue
   printf '%s\n' "${PHASES[@]}" | grep -qx "$sel" \
-    || die "fase desconocida: '$sel' (validas: ${PHASES[*]})"
+    || die "$(omarchy_msg unknown_phase "$sel")"
 done
 
 # Reanudar o ejecutar una sola fase no debe reabrir el cuestionario.
@@ -3286,7 +4810,7 @@ for p in "${PHASES[@]}"; do
   [[ -n $run_from && $p == "$run_from" ]] && started=1
   (( started )) || continue
   ensure_dirs
-  "ph_$p" || die "fallo en la fase '$p'"
+  "ph_$p" || die "$(omarchy_msg phase_failed "$p")"
 done
 echo
-echo "${c_ok}Completado en $(( (SECONDS-t0)/60 )) min.${c_off}"
+echo "${c_ok}$(omarchy_msg complete "$(( (SECONDS-t0)/60 ))")${c_off}"

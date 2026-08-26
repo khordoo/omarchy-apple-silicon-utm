@@ -12,6 +12,11 @@ set -euo pipefail
 # clonar en cualquier sitio sin editar nada.
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DOCS="$HOME/Library/Containers/com.utmapp.UTM/Data/Documents"
+
+if ! type omarchy_msg >/dev/null 2>&1; then
+  [ -f "${OMARCHY_CATALOG:-$ROOT/localization/catalog.sh}" ] && . "${OMARCHY_CATALOG:-$ROOT/localization/catalog.sh}"
+fi
+msg() { omarchy_msg "$@"; }
 NAME="${1:-Omarchy ARM}"
 : "${DEST_DIR:=$DOCS}"
 BUNDLE="$DEST_DIR/$NAME.utm"
@@ -20,8 +25,8 @@ VARS_TPL=/Applications/UTM.app/Contents/Resources/qemu/edk2-arm-vars.fd
 : "${UTM_CPUS:=8}"
 : "${UTM_MEM:=8192}"
 
-[ -f "$SRC_QCOW" ] || { echo "!! falta $SRC_QCOW"; exit 1; }
-[ -f "$VARS_TPL" ] || { echo "!! falta la plantilla de NVRAM UEFI $VARS_TPL"; exit 1; }
+[ -f "$SRC_QCOW" ] || { printf '!! %s\n' "$(msg utm_missing_disk "$SRC_QCOW")"; exit 1; }
+[ -f "$VARS_TPL" ] || { printf '!! %s\n' "$(msg utm_missing_vars "$VARS_TPL")"; exit 1; }
 
 VM_UUID=$(uuidgen)
 # Quien reciba el bundle lee estas notas en UTM antes de arrancar: tienen que
@@ -39,33 +44,33 @@ if [ "$DEST_DIR" = "$DOCS" ] && pgrep -x UTM >/dev/null; then
   UTMCTL=/Applications/UTM.app/Contents/MacOS/utmctl
   CORRIENDO=$("$UTMCTL" list 2>/dev/null | awk '$2=="started"{print $3" "$4}' | grep -v "^$" || true)
   if [ -n "$CORRIENDO" ]; then
-    echo "==> HAY VMs EN MARCHA en UTM:"
+    echo "==> $(msg utm_running_vms)"
     echo "$CORRIENDO" | sed 's/^/      /'
-    echo "    Para registrar el bundle hay que reiniciar UTM, y eso las cortaria."
+    echo "    $(msg utm_restart_warning)"
     if [ -t 0 ] && [ "${ASSUME_YES:-}" != "1" ]; then
-      printf "    ¿Cerrarlas y reiniciar UTM? [s/N]: "
+      printf '    %s [%s]: ' "$(msg utm_close_prompt)" "$(msg yesno_no)"
       read -r R </dev/tty || R=""
       case "$(printf '%s' "$R" | tr '[:upper:]' '[:lower:]')" in
-        s|si|y|yes) : ;;
-        *) echo "==> no se reinicia UTM: importa el bundle a mano con Archivo → Importar"; SKIP_RESTART=1 ;;
+        s|si|sí|y|yes) : ;;
+        *) echo "==> $(msg utm_manual_import)"; SKIP_RESTART=1 ;;
       esac
     else
-      echo "==> modo desatendido: NO se cierra UTM. Importa el bundle a mano."
+      echo "==> $(msg utm_unattended)"
       SKIP_RESTART=1
     fi
   fi
   if [ "${SKIP_RESTART:-0}" != "1" ]; then
-    echo "==> cerrando UTM para que reescanee Documents"
+    echo "==> $(msg utm_closing)"
     osascript -e 'quit app "UTM"' >/dev/null 2>&1 || true
     for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x UTM >/dev/null || break; sleep 1; done
     pgrep -x UTM >/dev/null && { pkill -x UTM || true; sleep 2; }
   fi
 fi
 
-echo "==> creando $BUNDLE"
+echo "==> $(msg utm_creating) $BUNDLE"
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Data"
-echo "    copiando disco ($(du -h "$SRC_QCOW" | cut -f1))"
+echo "    $(msg utm_copying) ($(du -h "$SRC_QCOW" | cut -f1))"
 cp -c "$SRC_QCOW" "$BUNDLE/Data/$DISK_UUID.qcow2" 2>/dev/null || cp "$SRC_QCOW" "$BUNDLE/Data/$DISK_UUID.qcow2"
 # La mitad VARS del UEFI aarch64 usa la plantilla edk2-ARM-vars.fd (no aarch64);
 # UTM aporta edk2-aarch64-code.fd en tiempo de ejecución vía -L.
@@ -91,9 +96,7 @@ cat > "$BUNDLE/config.plist" <<PLIST
 		<key>Icon</key>
 		<string>arch-linux</string>
 		<key>Notes</key>
-		<string>Arch Linux ARM (aarch64) + Hyprland + dotfiles de Omarchy 4.
-Usuario: ${NOTES_USER} · Contraseña: ${NOTES_PASS} (también root). Cámbiala con passwd.
-La tecla Option (⌥) actúa como SUPER. Lee LEEME.md.</string>
+		<string>$(msg utm_notes "$NOTES_USER" "$NOTES_PASS")</string>
 	</dict>
 	<key>System</key>
 	<dict>
@@ -222,21 +225,21 @@ La tecla Option (⌥) actúa como SUPER. Lee LEEME.md.</string>
 </plist>
 PLIST
 
-echo "==> validando el plist"
+echo "==> $(msg utm_validate)"
 plutil -lint "$BUNDLE/config.plist"
 du -sh "$BUNDLE"
 ls -la "$BUNDLE" "$BUNDLE/Data"
 
 if [ "$DEST_DIR" = "$DOCS" ]; then
-  echo "==> abriendo UTM para que registre el bundle"
+  echo "==> $(msg utm_opening)"
   open -a UTM
   sleep 6
   /Applications/UTM.app/Contents/MacOS/utmctl list || true
 else
-  echo "==> bundle creado fuera de la carpeta de UTM (no se registra)"
+  echo "==> $(msg utm_not_registered)"
 fi
 
 echo ""
-echo "Bundle:  $BUNDLE"
-echo "UUID:    $VM_UUID"
-echo "Arrancar: /Applications/UTM.app/Contents/MacOS/utmctl start \"$NAME\""
+echo "$(msg utm_bundle):  $BUNDLE"
+echo "$(msg utm_uuid):    $VM_UUID"
+echo "$(msg utm_start): /Applications/UTM.app/Contents/MacOS/utmctl start \"$NAME\""

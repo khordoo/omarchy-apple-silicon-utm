@@ -10,7 +10,77 @@ manual steps in the UTM interface.
 > 🇪🇸 The detailed guide and the write-up are in Spanish:
 > **[EMPEZAR.md](EMPEZAR.md)** (how to run it) · **[ARTICULO.md](ARTICULO.md)**
 > (why it is built this way) · **[README.es.md](README.es.md)**.
-> This page has everything you need to get going.
+> The English step-by-step guide is **[GETTING_STARTED.md](GETTING_STARTED.md)**;
+> this page has everything else you need to get going.
+
+## Quick Start (recommended): download the prebuilt v2 VM
+
+The image is on the Internet Archive, sanitised and ready to
+import — no build, no Homebrew, no waiting. Download
+**`omarchy-arm-utm-v2.zip`** from
+**https://archive.org/details/omarchy-arm-utm** (3.6 GB).
+
+The older `omarchy-arm-utm.zip` remains available for old links, but v2 fixes
+the published-image issues described below. Use v2 for new installs.
+
+```bash
+shasum -a 256 -c omarchy-arm-utm-v2.zip.sha256
+unzip omarchy-arm-utm-v2.zip
+open "Omarchy ARM.utm"
+```
+
+User `omarchy`, password `omarchy` (also root) — **change it with `passwd`**.
+
+## Build from source (advanced/reproducible)
+
+```bash
+git clone https://github.com/ggalancs/omarchy-arm-utm.git
+cd omarchy-arm-utm
+./build-omarchy-arm.sh
+```
+
+Requirements: **Apple Silicon Mac**, Homebrew, **UTM 4.7+**, Xcode Command Line
+Tools (for `git` and `python3`), **~40 GB free**. No `sudo` needed — the script
+touches nothing outside its own working directory.
+
+It asks six values that it pre-fills from your Mac — timezone from
+`/etc/localtime`, keyboard from macOS preferences, cores and RAM from `sysctl` —
+so Enter accepts them, then three decisions (compile the tools? include OBS and
+Pinta? prepare the image for distribution?) and a couple of follow-ups depending
+on the last one. Add `--yes` to skip all of it; with no tty it never asks.
+
+**The script is a single self-contained file.** It embeds the twelve files it
+needs — three install stages, the sanitiser, the repair harness, the optional-app
+installer, the post-update hook, the VM config, two `expect` harnesses, the QEMU
+launcher and the `.utm` bundle writer — and writes them out at startup. You can
+copy just that file to another Mac.
+
+### How long
+
+Measured on an M3 Max, tools compiled, without OBS/Pinta:
+
+| Phase | | Time |
+|---|---|---|
+| `deps` | host checks, installs qemu/expect/aria2 | ~10 s |
+| `fetch` | Alpine ISO + ALARM rootfs, sha256 and MD5 verified | 2 min |
+| `prepare` | package list, computed against Omarchy's live branch | ~10 s |
+| `build` | Alpine headless → partition → rootfs → three chroot stages | **40 min** |
+| `utm` | writes the `.utm` bundle and registers it | 1 min |
+| `verify` | boots and checks *inside the guest* that the desktop is up | 4 min |
+| `sanitize` | copies the disk and strips identity, for distribution | 10 min |
+| `package` | compacts the qcow2, builds the bundle, zips it | 3 min |
+
+**~57 minutes total** → a 4.1 GB `.zip`; peak 21 GB on disk. Including OBS
+Studio and Pinta adds ~50 minutes (OBS compiles from source).
+
+Every phase is resumable: `--from build`, `--only package`, `--list`.
+
+### Choose the installer language
+
+The installer defaults to English. Select Spanish for one run with
+`./build-omarchy-arm.sh --lang es`, or set `OMARCHY_LANG=es` in the environment.
+The command-line option takes precedence over the environment; use `--lang en`
+to force English.
 
 ## Why not just install Omarchy?
 
@@ -63,70 +133,6 @@ x86_64-only is the *repository* it is published in, so on ARM you cannot
 need to take precedence in `PATH`.
 
 Most existing guides for Apple Silicon target **Omarchy 3.x**. This one targets 4.
-
-## Or skip the build
-
-The image this produces is on the Internet Archive, sanitised and ready to
-import — no build, no Homebrew, no waiting:
-
-**https://archive.org/details/omarchy-arm-utm** — download **`omarchy-arm-utm-v2.zip`** · 3.6 GB ·
-`sha256 dde926bceabfcc4b…`
-
-The original 6.5 GB `omarchy-arm-utm.zip` is still there so existing links keep
-working, but it has two bugs v2 fixes (see the known-issue section below) and
-will be removed on **30 November 2026**. Take v2.
-
-```bash
-shasum -a 256 -c omarchy-arm-utm.zip.sha256
-unzip omarchy-arm-utm.zip
-open "Omarchy ARM.utm"
-```
-
-User `omarchy`, password `omarchy` (also root) — **change it with `passwd`**.
-
-## Quick start (build it yourself)
-
-```bash
-git clone https://github.com/ggalancs/omarchy-arm-utm.git
-cd omarchy-arm-utm
-./build-omarchy-arm.sh
-```
-
-Requirements: **Apple Silicon Mac**, Homebrew, **UTM 4.7+**, Xcode Command Line
-Tools (for `git` and `python3`), **~40 GB free**. No `sudo` needed — the script
-touches nothing outside its own working directory.
-
-It asks six values that it pre-fills from your Mac — timezone from
-`/etc/localtime`, keyboard from macOS preferences, cores and RAM from `sysctl` —
-so Enter accepts them, then three decisions (compile the tools? include OBS and
-Pinta? prepare the image for distribution?) and a couple of follow-ups depending
-on the last one. Add `--yes` to skip all of it; with no tty it never asks.
-
-**The script is a single self-contained file.** It embeds the twelve files it
-needs — three install stages, the sanitiser, the repair harness, the optional-app
-installer, the post-update hook, the VM config, two `expect` harnesses, the QEMU
-launcher and the `.utm` bundle writer — and writes them out at startup. You can
-copy just that file to another Mac.
-
-### How long
-
-Measured on an M3 Max, tools compiled, without OBS/Pinta:
-
-| Phase | | Time |
-|---|---|---|
-| `deps` | host checks, installs qemu/expect/aria2 | ~10 s |
-| `fetch` | Alpine ISO + ALARM rootfs, sha256 and MD5 verified | 2 min |
-| `prepare` | package list, computed against Omarchy's live branch | ~10 s |
-| `build` | Alpine headless → partition → rootfs → three chroot stages | **40 min** |
-| `utm` | writes the `.utm` bundle and registers it | 1 min |
-| `verify` | boots and checks *inside the guest* that the desktop is up | 4 min |
-| `sanitize` | copies the disk and strips identity, for distribution | 10 min |
-| `package` | compacts the qcow2, builds the bundle, zips it | 3 min |
-
-**~57 minutes total** → a 4.1 GB `.zip`; peak 21 GB on disk. Including OBS
-Studio and Pinta adds ~50 minutes (OBS compiles from source).
-
-Every phase is resumable: `--from build`, `--only package`, `--list`.
 
 ## What you get
 

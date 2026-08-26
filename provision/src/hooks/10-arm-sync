@@ -8,6 +8,16 @@
 # el sistema recibiria paquetes nuevos pero los scripts, temas y configuracion
 # de Omarchy se quedarian congelados en la version clonada.
 set -uo pipefail
+if [ -z "${OMARCHY_LANG+x}" ] && [ -r /etc/omarchy-arm-language ]; then
+  OMARCHY_LANG=$(cat /etc/omarchy-arm-language)
+fi
+export OMARCHY_LANG
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /usr/local/share/omarchy/catalog.sh /root/prov/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
 TREE=/usr/share/omarchy
 
 git -C "$TREE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
@@ -15,14 +25,14 @@ git -C "$TREE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 # El arbol puede ser del usuario (VM de desarrollo) o de root (imagen distribuida)
 if [ -w "$TREE/.git" ]; then GIT=(git -C "$TREE"); else GIT=(sudo git -C "$TREE"); fi
 
-echo -e "\e[32m\nActualizar el árbol de Omarchy (checkout git)\e[0m"
+echo -e "\e[32m\n$(msg armsync_title)\e[0m"
 before=$("${GIT[@]}" rev-parse --short HEAD 2>/dev/null)
 if ! "${GIT[@]}" pull --ff-only 2>&1 | sed 's/^/  /'; then
-  echo "  no se pudo hacer fast-forward; el árbol queda como estaba"
+  echo "  $(msg armsync_pull_failed)"
   exit 0
 fi
 after=$("${GIT[@]}" rev-parse --short HEAD 2>/dev/null)
-if [ "$before" = "$after" ]; then echo "  ya estaba al día ($after)"; exit 0; fi
+if [ "$before" = "$after" ]; then echo "  $(msg armsync_current "$after")"; exit 0; fi
 echo "  $before → $after"
 
 # Enlazar los binarios nuevos, respetando los envoltorios propios de ARM
@@ -37,7 +47,7 @@ for f in "$TREE"/bin/*; do
   # usuario que hace el sanitizador (ver stage3).
   sudo ln -sfn "/usr/share/omarchy/bin/$b" "$t" 2>/dev/null && n=$((n+1))
 done
-[ "$n" -gt 0 ] && echo "  $n binarios nuevos enlazados en /usr/bin"
+[ "$n" -gt 0 ] && echo "  $(msg armsync_linked "$n")"
 # Enlaces que apuntan a comandos ya retirados del arbol
 sudo find /usr/bin -xtype l -delete 2>/dev/null || true
 exit 0

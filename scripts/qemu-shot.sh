@@ -6,7 +6,15 @@ set -e
 # clonar en cualquier sitio sin editar nada.
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
-: "${DISK_IMG:?falta DISK_IMG}"
+
+if ! type omarchy_msg >/dev/null 2>&1; then
+  [ -f "${OMARCHY_CATALOG:-$ROOT/localization/catalog.sh}" ] && . "${OMARCHY_CATALOG:-$ROOT/localization/catalog.sh}"
+fi
+msg() { omarchy_msg "$@"; }
+if [ -z "${DISK_IMG:-}" ]; then
+  msg qemu_missing_disk >&2
+  exit 1
+fi
 : "${OUT:=shots/qemu-shot.png}"
 : "${WAIT:=150}"
 FW=$(brew --prefix qemu)/share/qemu/edk2-aarch64-code.fd
@@ -32,7 +40,7 @@ QPID=$!
 trap 'kill -TERM $QPID 2>/dev/null; rm -f "$VARS"' EXIT
 
 for i in $(seq 1 30); do [ -S "$MON" ] && break; sleep 1; done
-echo "arrancando, esperando ${WAIT}s al escritorio..."
+echo "$(msg qemu_shot_starting) ${WAIT}s $(msg qemu_shot_waiting)..."
 sleep "$WAIT"
 
 # Despierta la sesion: tras ~2 min hypridle lanza el salvapantallas y la
@@ -44,4 +52,4 @@ printf 'screendump %s\nquit\n' "$PPM" | nc -U "$MON" >/dev/null
 sleep 3
 sips -s format png "$PPM" --out "$OUT" >/dev/null
 rm -f "$PPM"
-echo "captura: $OUT"
+echo "$(msg qemu_shot_capture): $OUT"

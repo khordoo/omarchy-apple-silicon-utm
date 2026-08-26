@@ -3,24 +3,30 @@
 # sin volver a particionar ni descargar nada. Para iterar tras un fallo puntual.
 set -eu
 PROV=/media/prov
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" "$PROV/catalog.sh" /root/prov/catalog.sh /usr/local/share/omarchy/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
 log() { echo ""; echo "==> [repair] $*"; }
 trap 'rc=$?; [ "$rc" -ne 0 ] && echo "TOK_REPAIR_$rc"' EXIT
 
-log "modulos del kernel"
+log "$(msg repair_kernel_modules)"
 # Montar btrfs/vfat solo necesita el modulo del kernel, no las utilidades de
 # espacio de usuario: esta etapa NO depende de que haya red.
 for m in btrfs vfat fat nls_cp437 nls_iso8859-1 nls_utf8 crc32c-generic xxhash_generic; do
   modprobe "$m" 2>/dev/null || true
 done
-grep -qw btrfs /proc/filesystems || { echo "!! el kernel del live no soporta btrfs"; exit 1; }
-echo "  filesystems: $(tr '\n' ' ' < /proc/filesystems | tr -s ' ')"
+grep -qw btrfs /proc/filesystems || { echo "!! $(msg repair_btrfs_missing)"; exit 1; }
+echo "  $(msg repair_filesystems): $(tr '\n' ' ' < /proc/filesystems | tr -s ' ')"
 
-log "red (best-effort, solo por comodidad)"
+log "$(msg repair_network)"
 ip link set eth0 up 2>/dev/null || true
 udhcpc -i eth0 -q -n -t 8 >/dev/null 2>&1 || true
-ip -4 addr show eth0 2>/dev/null | grep -o 'inet [0-9.]*' || echo "  (sin red; se continua igualmente)"
+ip -4 addr show eth0 2>/dev/null | grep -o 'inet [0-9.]*' || echo "  ($(msg repair_no_network))"
 
-log "montando el sistema instalado"
+log "$(msg repair_mount)"
 umount -R /mnt 2>/dev/null || true
 if mount -t btrfs -o rw,noatime,compress=zstd:3,subvol=@ /dev/vda2 /mnt 2>/dev/null; then
   mount -t btrfs -o rw,noatime,compress=zstd:3,subvol=@home /dev/vda2 /mnt/home
@@ -40,7 +46,7 @@ rm -f /mnt/etc/resolv.conf
 printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /mnt/etc/resolv.conf
 df -h /mnt /mnt/boot
 
-log "ejecutando $FIXSCRIPT dentro del chroot"
+log "$(msg repair_run_fix "$FIXSCRIPT")"
 mkdir -p /mnt/root/prov
 cp "$PROV/$FIXSCRIPT" /mnt/root/prov/
 [ -f "$PROV/config.env" ] && cp "$PROV/config.env" /mnt/root/prov/
@@ -49,6 +55,11 @@ cp "$PROV/$FIXSCRIPT" /mnt/root/prov/
 [ -f "$PROV/clipbrd.sh" ] && cp "$PROV/clipbrd.sh" /mnt/root/prov/omarchy-arm-clipboard
 [ -f "$PROV/vdagent.py" ] && cp "$PROV/vdagent.py" /mnt/root/prov/omarchy-arm-vdagent
 [ -f "$PROV/fsinfo.env" ] && cp "$PROV/fsinfo.env" /mnt/root/prov/
+[ -f "$PROV/catalog.sh" ] && {
+  cp "$PROV/catalog.sh" /mnt/root/prov/catalog.sh
+  mkdir -p /mnt/usr/local/share/omarchy
+  cp "$PROV/catalog.sh" /mnt/usr/local/share/omarchy/catalog.sh
+}
 [ -f "$PROV/stage3.sh" ] && cp "$PROV/stage3.sh" /mnt/root/prov/
 [ -f "$PROV/packages-core.txt" ] && cp "$PROV/packages-core.txt" /mnt/root/prov/
 [ -f "$PROV/packages-extra.txt" ] && cp "$PROV/packages-extra.txt" /mnt/root/prov/
@@ -60,11 +71,11 @@ set -e
 
 # El directorio de trabajo no debe quedarse dentro del sistema: se acumulan ahi
 # todos los scripts de reparacion de todas las pasadas.
-log "retirando /root/prov del sistema instalado"
+log "$(msg repair_remove_payload)"
 ls /mnt/root/prov 2>/dev/null | tr '\n' ' '; echo
 rm -rf /mnt/root/prov
 
-log "desmontando"
+log "$(msg repair_unmount)"
 sync
 umount -R /mnt/tmp /mnt/run /mnt/dev /mnt/sys /mnt/proc 2>/dev/null || true
 umount -R /mnt/boot 2>/dev/null || true

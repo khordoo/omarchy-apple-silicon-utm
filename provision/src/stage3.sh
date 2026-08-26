@@ -4,6 +4,13 @@
 set -uo pipefail   # sin -e: esta etapa es best-effort por partes
 . ~/config.env
 
+if ! type omarchy_msg >/dev/null 2>&1; then
+  for _catalog in "${OMARCHY_CATALOG:-}" /root/prov/catalog.sh /usr/local/share/omarchy/catalog.sh /media/prov/catalog.sh; do
+    [ -n "$_catalog" ] && [ -f "$_catalog" ] && . "$_catalog" && break
+  done
+fi
+msg() { if type omarchy_msg >/dev/null 2>&1; then omarchy_msg "$@"; else printf '%s' "$1"; fi; }
+
 log()  { echo ""; echo "==> [stage3] $*"; }
 warn() { echo "!!  [stage3] $*"; }
 
@@ -13,10 +20,10 @@ export PATH="$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin"
 export OMARCHY_CHROOT_INSTALL=1
 
 # ------------------------------------------------------------ repo de Omarchy
-log "clonando basecamp/omarchy (rama ${OMARCHY_REF:-quattro} = Omarchy 4; master es 3.8.5)"
+log "$(msg stage3_clone "${OMARCHY_REF:-quattro}")"
 rm -rf "$OMARCHY_PATH"
 mkdir -p "$(dirname "$OMARCHY_PATH")"
-git clone --depth 1 --branch "${OMARCHY_REF:-quattro}" https://github.com/basecamp/omarchy.git "$OMARCHY_PATH" || { warn "clone fallido"; exit 1; }
+git clone --depth 1 --branch "${OMARCHY_REF:-quattro}" https://github.com/basecamp/omarchy.git "$OMARCHY_PATH" || { warn "$(msg stage3_clone_failed)"; exit 1; }
 # core.fileMode=false ANTES del chmod: si no, los cambios de permiso dejan el
 # checkout sucio y `git pull --ff-only` se niega a actualizarlo despues.
 git -C "$OMARCHY_PATH" config core.fileMode false
@@ -25,23 +32,23 @@ echo "  version: $(cat "$OMARCHY_PATH/version" 2>/dev/null)"
 
 # ------------------------------------------------------------ dotfiles
 # Equivalente a install/config/config.sh
-log "copiando dotfiles a ~/.config"
+log "$(msg stage3_copy_dotfiles)"
 mkdir -p ~/.config
 cp -R "$OMARCHY_PATH"/config/* ~/.config/
 cp "$OMARCHY_PATH/default/bashrc" ~/.bashrc
 ls ~/.config | tr '\n' ' '; echo
 
 # ------------------------------------------------------------ AUR
-log "AUR: piezas de Omarchy que no están en los repos de Arch Linux ARM"
+log "$(msg stage3_aur)"
 mkdir -p /tmp/aur
 aur_install() {
   local p="$1"
   echo "  --- $p"
   rm -rf "/tmp/aur/$p"
-  git clone --depth 1 -q "https://aur.archlinux.org/$p.git" "/tmp/aur/$p" || { warn "clone $p"; return 1; }
+  git clone --depth 1 -q "https://aur.archlinux.org/$p.git" "/tmp/aur/$p" || { warn "$(msg stage3_clone_package "$p")"; return 1; }
   ( cd "/tmp/aur/$p" && makepkg -si --noconfirm --needed --noprogressbar ) >"/tmp/aur/$p.log" 2>&1 \
-    || { warn "makepkg $p falló (log: /tmp/aur/$p.log)"; tail -15 "/tmp/aur/$p.log"; return 1; }
-  echo "  ok: $p"
+    || { warn "$(msg stage3_makepkg_failed "$p")"; tail -15 "/tmp/aur/$p.log"; return 1; }
+  echo "  $(msg stage3_ok): $p"
 }
 
 AUR_OK=(); AUR_KO=()
@@ -51,12 +58,12 @@ AUR_OK=(); AUR_KO=()
 for p in yay xdg-terminal-exec; do
   if aur_install "$p"; then AUR_OK+=("$p"); else AUR_KO+=("$p"); fi
 done
-echo "  AUR ok:    ${AUR_OK[*]:-ninguno}"
-echo "  AUR falló: ${AUR_KO[*]:-ninguno}"
+echo "  AUR $(msg stage3_ok):    ${AUR_OK[*]:-$(msg stage3_none)}"
+echo "  AUR $(msg stage3_failed): ${AUR_KO[*]:-$(msg stage3_none)}"
 
 # Sustituto si xdg-terminal-exec no compiló: Omarchy usa $TERMINAL=xdg-terminal-exec
 if ! command -v xdg-terminal-exec >/dev/null 2>&1; then
-  warn "xdg-terminal-exec ausente: instalando un envoltorio sobre alacritty"
+  warn "$(msg stage3_terminal_missing)"
   sudo install -m 0755 /dev/stdin /usr/local/bin/xdg-terminal-exec <<'EOF'
 #!/bin/sh
 # Envoltorio minimo: Omarchy exporta TERMINAL=xdg-terminal-exec.
@@ -77,7 +84,7 @@ printf 'Alacritty.desktop\n' > ~/.config/xdg-terminals.list
 # /etc/profile.d y /usr/share/uwsm/env.d. Ese paquete solo existe para x86_64,
 # asi que aqui se replica a mano. Sin esto OMARCHY_PATH queda vacio y Hyprland
 # arranca en modo emergencia por no encontrar default/hypr/bootstrap.lua.
-log "integrando Omarchy en las rutas de sistema (sustituye al paquete pacman)"
+log "$(msg stage3_integrate)"
 sudo ln -sfn "$OMARCHY_PATH" /usr/share/omarchy
 # Los comandos van a /usr/bin, que es donde los pone el package() de upstream.
 # Ponerlos en /usr/local/bin parecia mas limpio (no choca con pacman) pero
@@ -98,7 +105,7 @@ for f in "$OMARCHY_PATH"/bin/*; do
   chmod +x "$f"
   sudo ln -sfn "/usr/share/omarchy/bin/$(basename "$f")" "/usr/bin/$(basename "$f")" && n=$((n+1))
 done
-echo "  $n binarios en /usr/bin -> /usr/share/omarchy/bin"
+echo "  $(msg stage3_binaries "$n")"
 # Las unidades de usuario van a /usr/lib/systemd/user/, que es donde systemd las
 # busca. Las instala el paquete omarchy-settings, que tampoco existe para ARM.
 # Sin esto, install/user/first-run/enable-user-units.sh falla en cada login, y
@@ -108,7 +115,8 @@ echo "  $n binarios en /usr/bin -> /usr/share/omarchy/bin"
 if [ -d "$OMARCHY_PATH/default/systemd/user" ]; then
   sudo install -d /usr/lib/systemd/user
   sudo cp -a "$OMARCHY_PATH/default/systemd/user/." /usr/lib/systemd/user/
-  echo "  $(ls "$OMARCHY_PATH/default/systemd/user"/*.service 2>/dev/null | wc -l) unidades de usuario en /usr/lib/systemd/user"
+  unit_count=$(ls "$OMARCHY_PATH/default/systemd/user"/*.service 2>/dev/null | wc -l)
+  echo "  $(msg stage3_units "$unit_count")"
 fi
 for d in system-sleep zram-generator.conf.d; do
   [ -d "$OMARCHY_PATH/default/systemd/$d" ] && \
@@ -133,7 +141,7 @@ for pf in /etc/pam.d/sddm /etc/pam.d/sddm-autologin /etc/pam.d/sddm-greeter; do
   [ -f "$pf" ] && sudo sed -i '/-auth.*pam_gnome_keyring\.so/d;/-password.*pam_gnome_keyring\.so/d' "$pf"
 done
 
-log "SDDM: tema Omarchy y sesion"
+log "$(msg stage3_sddm)"
 sudo mkdir -p /usr/share/sddm/themes /usr/local/share/wayland-sessions
 sudo cp -a "$OMARCHY_PATH/default/sddm/omarchy" /usr/share/sddm/themes/ 2>/dev/null || true
 [ -f "$OMARCHY_PATH/default/sddm/hyprland.lua" ] && sudo cp -a "$OMARCHY_PATH/default/sddm/hyprland.lua" /usr/share/sddm/hyprland.lua
@@ -146,10 +154,10 @@ export OMARCHY_PATH=/usr/share/omarchy
 export PATH="/usr/local/bin:$PATH"
 
 # ------------------------------------------------------------ tema
-log "aplicando el tema Tokyo Night"
+log "$(msg stage3_theme)"
 mkdir -p ~/.config/omarchy/themes
 if command -v omarchy-theme-set >/dev/null 2>&1; then
-  omarchy-theme-set "Tokyo Night" || warn "omarchy-theme-set falló; enlazando a mano"
+  omarchy-theme-set "Tokyo Night" || warn "$(msg stage3_theme_failed)"
 fi
 if [ ! -e ~/.config/omarchy/current/theme ]; then
   mkdir -p ~/.config/omarchy/current
@@ -164,7 +172,7 @@ ln -snf ~/.local/state/omarchy/current/theme/btop.theme ~/.config/btop/themes/cu
 ls -l ~/.local/state/omarchy/current/ 2>/dev/null
 
 # ------------------------------------------------------------ ajustes de VM
-log "ajustes para máquina virtual"
+log "$(msg stage3_vm_tuning)"
 # quattro usa configuracion Lua: escribir monitors.conf no serviria de nada.
 cat > ~/.config/hypr/monitors.lua <<'LUA'
 -- See https://wiki.hypr.land/Configuring/Basics/Monitors/
@@ -201,7 +209,8 @@ mkdir -p ~/.local/state/omarchy/migrations
 for f in "$OMARCHY_PATH"/migrations/*.sh; do
   [ -f "$f" ] && : > ~/.local/state/omarchy/migrations/"$(basename "$f")"
 done
-echo "  migraciones selladas: $(ls -1 ~/.local/state/omarchy/migrations | wc -l)"
+migration_count=$(ls -1 ~/.local/state/omarchy/migrations | wc -l)
+echo "  $(msg stage3_migrations "$migration_count")"
 
 # --- branding (about + salvapantallas) -----------------------------------
 mkdir -p ~/.config/omarchy/branding
@@ -296,11 +305,9 @@ if pacman -Si zig >/dev/null 2>&1; then
 fi
 
 if [ "${HACER_TOOLS:-si}" != "si" ]; then
-  warn "compilacion de herramientas desactivada: faltaran ttfx, tensaku, omacalc,"
-  warn "omacut, omawrite, aether, cliamp y omarchy-nvim (se pueden anadir despues"
-  warn "con: yay -S <paquete>)"
+  warn "$(msg stage3_tools_disabled)"
 else
-log "compilando las herramientas de Omarchy ausentes en aarch64"
+log "$(msg stage3_tools_build)"
 TOOLS_OK=(); TOOLS_KO=()
 for spec in \
   "aur:yaru-icon-theme" "aur:ttf-ia-writer" "aur:tzupdate" "aur:ufw-docker" \
@@ -311,8 +318,8 @@ for spec in \
   src=${spec%%:*}; pkg=${spec#*:}
   if build_omarchy_tool "$src" "$pkg"; then TOOLS_OK+=("$pkg"); else TOOLS_KO+=("$pkg"); fi
 done
-echo "  compiladas: ${TOOLS_OK[*]:-ninguna}"
-[ ${#TOOLS_KO[@]} -gt 0 ] && warn "no compilaron: ${TOOLS_KO[*]}"
+echo "  $(msg stage3_built): ${TOOLS_OK[*]:-$(msg stage3_none)}"
+[ ${#TOOLS_KO[@]} -gt 0 ] && warn "$(msg stage3_not_built "${TOOLS_KO[*]}")"
 rm -rf /tmp/omabuild
 fi
 # Omarchy sustituye a proposito dos iconos de Yaru por los de Adwaita; si Yaru
@@ -333,7 +340,7 @@ sudo bash "$OMARCHY_PATH/install/config/theme-system.sh" >/dev/null 2>&1 || true
 # Este envoltorio compara lo que de verdad toca: uname -r contra el directorio
 # de modulos que posee el paquete del kernel. /usr/local/bin va antes que
 # /usr/bin en el PATH, asi que sustituye al original sin tocar el arbol.
-log "envoltorio de omarchy-update-restart (aviso de kernel en ALARM)"
+log "$(msg stage3_kernel_wrapper)"
 sudo install -Dm755 /dev/stdin /usr/local/bin/omarchy-update-restart <<'KRN'
 #!/bin/bash
 # En Arch Linux ARM el kernel no deja vmlinuz en /usr/lib/modules/<ver>/, que es
@@ -365,14 +372,14 @@ echo "  /usr/local/bin/omarchy-update-restart"
 
 # --- ttfx: efectos de texto del salvapantallas (Rust, ~12 min) -----------
 if ! command -v ttfx >/dev/null 2>&1 && command -v cargo >/dev/null 2>&1; then
-  log "compilando ttfx desde fuente (no existe para aarch64)"
+  log "$(msg stage3_ttfx_build)"
   rm -rf /tmp/ttfx-src
   if git clone --depth 1 -q https://github.com/omacom-io/ttfx.git /tmp/ttfx-src \
      && ( cd /tmp/ttfx-src && cargo build --release -q ); then
     sudo install -Dm755 /tmp/ttfx-src/target/release/ttfx /usr/local/bin/ttfx
     echo "  ttfx $(ttfx --version 2>/dev/null | head -1)"
   else
-    warn "ttfx no compilo; el salvapantallas mostrara el logo sin efectos"
+    warn "$(msg stage3_ttfx_failed)"
   fi
   rm -rf /tmp/ttfx-src
 fi
@@ -416,11 +423,11 @@ mkdir -p ~/Pictures/Screenshots ~/Videos ~/Desktop ~/Documents ~/Downloads
 # oficial, pero son propietarias: incluirlas en una imagen que se distribuye
 # seria redistribuir binarios de terceros. Se deja el instalador a mano.
 if [ -f "$HOME/.omarchy-arm-prov/omarchy-arm-extras" ]; then
-  log "instalador de apps opcionales (omarchy-arm-extras)"
+  log "$(msg stage3_optional_installer)"
   sudo install -Dm755 "$HOME/.omarchy-arm-prov/omarchy-arm-extras" /usr/local/bin/omarchy-arm-extras
   sudo install -Dm644 /dev/stdin /usr/local/share/applications/omarchy-arm-extras.desktop <<'DESK'
 [Desktop Entry]
-Name=Instalar apps que faltan (ARM)
+Name=$(msg desktop_name)
 Comment=1Password, Obsidian, Typora, LocalSend, Google Chrome
 Exec=xdg-terminal-exec omarchy-arm-extras
 Icon=system-software-install
@@ -428,7 +435,7 @@ Terminal=false
 Type=Application
 Categories=System;PackageManager;
 DESK
-  echo "  disponible como comando y en el menu de aplicaciones"
+  echo "  $(msg stage3_available_menu)"
 fi
 
 # --- portapapeles compartido con el anfitrion ---------------------------
@@ -443,7 +450,7 @@ fi
 # omarchy-arm-vdagent habla el MISMO protocolo por el MISMO puerto, pero al
 # otro lado usa wl-copy/wl-paste. Se activa solo, como servicio de usuario.
 if [ -f "$HOME/.omarchy-arm-prov/omarchy-arm-vdagent" ]; then
-  log "agente de portapapeles nativo para Wayland"
+  log "$(msg stage3_clipboard_agent)"
   sudo install -Dm755 "$HOME/.omarchy-arm-prov/omarchy-arm-vdagent" /usr/local/bin/omarchy-arm-vdagent
   # spice-vdagent se queda instalado (aporta redimensionado de pantalla) pero
   # NO debe competir por el puerto: se le quita el arranque automatico.
@@ -469,13 +476,13 @@ WantedBy=graphical-session.target
 UNIT
   systemctl --user daemon-reload 2>/dev/null || true
   systemctl --user enable omarchy-arm-vdagent.service 2>/dev/null || true
-  echo "  /usr/local/bin/omarchy-arm-vdagent + servicio de usuario"
+  echo "  $(msg stage3_vdagent_ready)"
 fi
 # Puente por carpeta compartida, como alternativa si el canal SPICE no esta
 # disponible (por ejemplo con el backend de virtualizacion de Apple).
 if [ -f "$HOME/.omarchy-arm-prov/omarchy-arm-clipboard" ]; then
   sudo install -Dm755 "$HOME/.omarchy-arm-prov/omarchy-arm-clipboard" /usr/local/bin/omarchy-arm-clipboard
-  echo "  /usr/local/bin/omarchy-arm-clipboard (alternativa por carpeta compartida)"
+  echo "  $(msg stage3_clipboard_fallback)"
 
   # OBS Studio y Pinta son software libre: pueden viajar dentro de la imagen, y
   # asi es como se distribuye. Se instalan con el mismo instalador para no
@@ -483,16 +490,16 @@ if [ -f "$HOME/.omarchy-arm-prov/omarchy-arm-clipboard" ]; then
   # x86-only; Pinta necesita el .NET arm64 de Microsoft, que Arch no empaqueta).
   # Es lo mas caro del build: ~45 min. HACER_LIBRES=no lo omite.
   if [ "${HACER_LIBRES:-si}" = "si" ]; then
-    log "OBS Studio y Pinta (software libre, van dentro de la imagen; ~45 min)"
+    log "$(msg stage3_free_apps)"
     if /usr/local/bin/omarchy-arm-extras pinta obs; then
-      echo "  pinta: $(pacman -Q pinta 2>/dev/null || echo FALTA)"
-      echo "  obs:   $(pacman -Q obs-studio 2>/dev/null || echo FALTA)"
+      echo "  pinta: $(pacman -Q pinta 2>/dev/null || msg stage3_missing)"
+      echo "  obs:   $(pacman -Q obs-studio 2>/dev/null || msg stage3_missing)"
     else
-      warn "OBS o Pinta no se instalaron; se pueden anadir despues con:"
+      warn "$(msg stage3_free_apps_failed)"
       warn "  omarchy-arm-extras pinta obs"
     fi
   else
-    echo "  OBS y Pinta omitidos (HACER_LIBRES=no)"
+    echo "  $(msg stage3_free_apps_skipped)"
   fi
 fi
 
@@ -503,16 +510,16 @@ fi
 #    OMARCHY_PATH apunta FUERA de /usr/share/omarchy, y aqui apunta justo ahi.
 #    Sin el hook, el sistema recibe paquetes pero el arbol de Omarchy (scripts,
 #    temas, configuracion) se queda congelado en la version clonada.
-log "actualizaciones: snapper + hook post-update"
-sudo pacman -S --noconfirm --needed snapper >/dev/null 2>&1 || warn "snapper no disponible"
+log "$(msg stage3_updates)"
+sudo pacman -S --noconfirm --needed snapper >/dev/null 2>&1 || warn "$(msg stage3_snapper_missing)"
 if command -v snapper >/dev/null 2>&1; then
   sudo bash -euo pipefail "$OMARCHY_PATH/install/config/snapper.sh" >/dev/null 2>&1 \
-    && echo "  snapper configurado: instantanea antes de cada actualizacion" \
-    || warn "no se pudo configurar snapper"
+    && echo "  $(msg stage3_snapper_ready)" \
+    || warn "$(msg stage3_snapper_failed)"
 fi
 if [ -f "$HOME/.omarchy-arm-prov/10-arm-sync" ]; then
   install -Dm755 "$HOME/.omarchy-arm-prov/10-arm-sync" ~/.config/omarchy/hooks/post-update.d/10-arm-sync
-  echo "  hook post-update instalado"
+  echo "  $(msg stage3_hook_ready)"
 fi
 
 log "git"
@@ -521,12 +528,12 @@ git config --global user.email "$VM_EMAIL"
 git config --global init.defaultBranch master
 
 # ------------------------------------------------------------ resumen
-log "resumen"
-echo "  omarchy:   $(ls -d "$OMARCHY_PATH" 2>/dev/null || echo FALTA)"
-echo "  ~/.config: $(ls ~/.config | wc -l) entradas"
-echo "  tema:      $(readlink -f ~/.config/omarchy/current/theme 2>/dev/null || echo 'sin enlazar')"
+log "$(msg stage3_summary)"
+echo "  omarchy:   $(ls -d "$OMARCHY_PATH" 2>/dev/null || msg stage3_missing)"
+echo "  ~/.config: $(ls ~/.config | wc -l) $(msg stage3_entries)"
+echo "  tema:      $(readlink -f ~/.config/omarchy/current/theme 2>/dev/null || echo "$(msg stage3_unlinked)")"
 echo "  hyprland:  $(command -v Hyprland || command -v hyprland || echo 'NO')"
 echo "  omarchy-shell: $(command -v omarchy-shell || echo 'NO')"
 echo "  terminal:  $(command -v xdg-terminal-exec || echo 'NO')"
 echo ""
-echo "==> [stage3] COMPLETADO"
+echo "==> [stage3] $(msg stage3_completed)"

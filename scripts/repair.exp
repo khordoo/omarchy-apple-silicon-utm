@@ -5,7 +5,36 @@ set timeout 900
 log_user 1
 match_max 400000
 set FIX [lindex $argv 0]
-if {$FIX eq ""} { puts "uso: repair.exp <fix.sh>"; exit 1 }
+set lang "en"
+if {[info exists ::env(OMARCHY_LANG)] && $::env(OMARCHY_LANG) eq "es"} { set lang "es" }
+
+proc msg {key args} {
+    global lang
+    set id "$lang:$key"
+    switch -- $id {
+        en:usage { set text "Usage: repair.exp <fix.sh>" }
+        es:usage { set text "Uso: repair.exp <fix.sh>" }
+        en:login { set text "Alpine login" }
+        es:login { set text "login de Alpine" }
+        en:shell { set text "root shell" }
+        es:shell { set text "shell de root" }
+        en:prompt { set text "prompt" }
+        es:prompt { set text "prompt" }
+        en:iso { set text "provisioning ISO" }
+        es:iso { set text "ISO de aprovisionamiento" }
+        en:success { set text "===== REPAIR COMPLETED =====" }
+        es:success { set text "===== REPARACION COMPLETADA =====" }
+        en:failed { set text "!!!!! REPAIR FAILED !!!!!" }
+        es:failed { set text "!!!!! LA REPARACION FALLO !!!!!" }
+        en:eof { set text "EOF" }
+        es:eof { set text "EOF" }
+        default { set text $key }
+    }
+    if {[llength $args] == 0} { return $text }
+    return [format $text {*}$args]
+}
+
+if {$FIX eq ""} { puts [msg usage]; exit 1 }
 
 proc wait_for {pat code msg {t 900}} {
     set timeout $t
@@ -20,20 +49,20 @@ if {[string match "@*@" $ROOT]} {
   set ROOT [expr {[info exists env(OMARM_ROOT)] ? $env(OMARM_ROOT) : [pwd]}]
 }
 spawn -noecho $ROOT/scripts/qemu-build.sh
-wait_for "localhost login:" 10 "login de Alpine" 300
+wait_for "localhost login:" 10 [msg login] 300
 send "root\r"
-wait_for "localhost:~#" 11 "shell de root" 120
+wait_for "localhost:~#" 11 [msg shell] 120
 send "export PS1='RDY> '; echo TOK_SH_\$?\r"
-wait_for "TOK_SH_0" 12 "prompt" 60
+wait_for "TOK_SH_0" 12 [msg prompt] 60
 send "mkdir -p /media/prov; for d in /dev/vd? /dev/sr?; do mount -t iso9660 -o ro \$d /media/prov 2>/dev/null && \[ -f /media/prov/repair.sh \] && break; umount /media/prov 2>/dev/null; done; ls /media/prov; echo TOK_PROV_\$?\r"
-wait_for "TOK_PROV_0" 13 "ISO de aprovisionamiento" 120
+wait_for "TOK_PROV_0" 13 [msg iso] 120
 
 set timeout -1
-send "export FIXSCRIPT=$FIX; sh /media/prov/repair.sh 2>&1 | tee /tmp/repair.log\r"
+send "export OMARCHY_LANG=$lang; export FIXSCRIPT=$FIX; sh /media/prov/repair.sh 2>&1 | tee /tmp/repair.log\r"
 expect {
-    -ex "TOK_REPAIR_0" { puts "\n\n===== REPARACION COMPLETADA =====\n" }
-    -re {TOK_REPAIR_[1-9][0-9]*} { puts "\n\n!!!!! LA REPARACION FALLO !!!!!\n"; exit 20 }
-    eof { puts "\n!! EOF"; exit 16 }
+    -ex "TOK_REPAIR_0" { puts "\n\n[msg success]\n" }
+    -re {TOK_REPAIR_[1-9][0-9]*} { puts "\n\n[msg failed]\n"; exit 20 }
+    eof { puts "\n!! [msg eof]"; exit 16 }
 }
 set timeout 300
 send "sync; poweroff -f\r"

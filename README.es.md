@@ -130,6 +130,12 @@ y para el portapapeles [`fixes/19-portapapeles.sh`](fixes/19-portapapeles.sh).
 
 ## Uso
 
+### Idioma del instalador
+
+El instalador usa inglés por defecto. Para ejecutarlo en español, añade
+`--lang es` o define `OMARCHY_LANG=es`; la opción de línea de comandos tiene
+prioridad sobre la variable de entorno. Usa `--lang en` para forzar inglés.
+
 ```bash
 ./build-omarchy-arm.sh              # pregunta lo justo y construye
 ./build-omarchy-arm.sh --yes        # desatendido, con los valores por defecto
@@ -232,7 +238,7 @@ build-omarchy-arm.sh   script autónomo con las piezas embebidas
 EMPEZAR.md             guía para ejecutarlo: requisitos y resolución de problemas
 ARTICULO.md            explicación paso a paso de cómo se llegó hasta aquí
 articulo.html          la misma, como página
-dist/                  omarchy-arm-utm.zip + sha256 + LEEME para el destinatario
+dist/                  omarchy-arm-utm.zip.sha256 + LEEME.md para el destinatario
 dl/                    Alpine virt ISO + rootfs de ALARM (MD5 verificado)
 provision/src/         stage1..3.sh repair.sh sanitize.sh omarchy-arm-extras hooks/
 scripts/               qemu-build.sh build.exp repair.exp make-utm.sh qemu-shot.sh omssh
