@@ -91,6 +91,20 @@ Mac keys like this:
 - **⌥+Return** — terminal
 - **⌥+K** — keybinding reference
 
+New prebuilt images should be released with a US English keyboard layout.
+Interactive builds detect the selected macOS input source and let you confirm
+or change it before the build starts.
+
+Some Logitech keyboards can operate in either Mac or Windows mode. Use Mac
+mode with the image's default Option-to-SUPER mapping. If you use Windows mode
+and want the physical Windows key to remain SUPER, remove
+`altwin:swap_lalt_lwin` from `~/.config/hypr/input.lua`, then run:
+
+```bash
+hyprctl reload
+hyprctl configerrors
+```
+
 ## Optional applications
 
 1Password, Obsidian, Typora, LocalSend, and Google Chrome are not bundled
@@ -144,6 +158,13 @@ For an unattended build using the current defaults:
 
 ```bash
 ./build-omarchy-arm.sh --yes
+```
+
+For a reproducible US English release image, make the keyboard choice explicit
+so it does not depend on the maintainer's selected macOS input source:
+
+```bash
+VM_TIMEZONE=UTC VM_KEYMAP=us VM_XKB=us ./build-omarchy-arm.sh --yes
 ```
 
 The builder is a single self-contained Bash script. Its phases are resumable:

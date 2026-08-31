@@ -33,6 +33,11 @@
 set -uo pipefail
 
 # ───────────────────────────────── parametros ──────────────────────────────
+# Remember explicit regional choices before applying fallbacks. Host detection
+# must not overwrite values supplied for a reproducible distribution build.
+VM_TIMEZONE_EXPLICIT=${VM_TIMEZONE+x}
+VM_KEYMAP_EXPLICIT=${VM_KEYMAP+x}
+VM_XKB_EXPLICIT=${VM_XKB+x}
 : "${W:=$HOME/omarchy-arm-build}"        # directorio de trabajo
 : "${VM_NAME:=Omarchy ARM}"              # nombre de la VM en UTM
 : "${VM_USER:=builder}"                  # usuario durante la construccion
@@ -40,9 +45,9 @@ set -uo pipefail
 : "${VM_FULLNAME:=Omarchy ARM}"
 : "${VM_EMAIL:=usuario@ejemplo.com}"
 : "${VM_HOSTNAME:=omarchy}"
-: "${VM_TIMEZONE:=Europe/Madrid}"
-: "${VM_KEYMAP:=es}"                     # consola de texto
-: "${VM_XKB:=es}"                        # Hyprland/Wayland
+: "${VM_TIMEZONE:=UTC}"
+: "${VM_KEYMAP:=us}"                     # consola de texto
+: "${VM_XKB:=us}"                        # Hyprland/Wayland
 : "${VM_LOCALE:=en_US.UTF-8}"
 : "${VM_LOCALE_EXTRA:=es_ES.UTF-8}"
 : "${DISK_SIZE:=80G}"
@@ -1299,20 +1304,22 @@ confirm() {  # confirm <pregunta> <si|no por defecto>
 # Valores por defecto tomados del propio Mac: asi la mayoria de las preguntas se
 # contestan con Enter en vez de obligar a buscar el nombre de una zona horaria.
 detectar_del_anfitrion() {
-  local tz kb ncpu ram
+  local tz kb ncpu ram detected_keymap="" detected_xkb=""
   tz=$(readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')
-  [[ -n $tz ]] && VM_TIMEZONE="$tz"
+  [[ -z $VM_TIMEZONE_EXPLICIT && -n $tz ]] && VM_TIMEZONE="$tz"
   kb=$(defaults read ~/Library/Preferences/com.apple.HIToolbox.plist AppleSelectedInputSources 2>/dev/null \
        | sed -n 's/.*"KeyboardLayout Name" = "\([^"]*\)".*/\1/p' | head -1)
   case "$kb" in
-    Spanish*)  VM_KEYMAP=es; VM_XKB=es ;;
-    U.S.*|ABC*|US*) VM_KEYMAP=us; VM_XKB=us ;;
-    British*)  VM_KEYMAP=uk; VM_XKB=gb ;;
-    German*)   VM_KEYMAP=de; VM_XKB=de ;;
-    French*)   VM_KEYMAP=fr; VM_XKB=fr ;;
-    Portuguese*) VM_KEYMAP=pt; VM_XKB=pt ;;
-    Italian*)  VM_KEYMAP=it; VM_XKB=it ;;
+    Spanish*)    detected_keymap=es; detected_xkb=es ;;
+    U.S.*|ABC*|US*) detected_keymap=us; detected_xkb=us ;;
+    British*)    detected_keymap=uk; detected_xkb=gb ;;
+    German*)     detected_keymap=de; detected_xkb=de ;;
+    French*)     detected_keymap=fr; detected_xkb=fr ;;
+    Portuguese*) detected_keymap=pt; detected_xkb=pt ;;
+    Italian*)    detected_keymap=it; detected_xkb=it ;;
   esac
+  [[ -z $VM_KEYMAP_EXPLICIT && -n $detected_keymap ]] && VM_KEYMAP=$detected_keymap
+  [[ -z $VM_XKB_EXPLICIT && -n $detected_xkb ]] && VM_XKB=$detected_xkb
   ncpu=$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || sysctl -n hw.ncpu)
   ram=$(( $(sysctl -n hw.memsize) / 1024 / 1024 ))
   (( ncpu > 2 )) && UTM_CPUS=$(( ncpu / 2 ))
